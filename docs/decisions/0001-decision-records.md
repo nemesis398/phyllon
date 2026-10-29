@@ -21,17 +21,21 @@ the options that lost.
 3. **No records**, with the reasons left in pull request descriptions and the
    commit history.
 
-The comparison uses the five dials of the conscience skill: how fine the unit
-is, how much is stated twice, how tightly the parts depend on each other, how
-long the record stays useful, and how much it steers the next change.
+The comparison uses the five dials of the conscience skill: granularity (can a
+coarse unit be replaced by finer ones), redundancy (how many paths reach the
+same effect), coupling (does using one thing secretly obligate another),
+retention (does the interface keep its own copy of your data that you must keep
+in sync) and flow control (who calls whom). Retention and flow control do not
+bite on a documentation format, so the table marks them "not at stake" instead
+of stretching them.
 
-| Dial         | One file per decision                          | One log file                                 | No records                           |
-| ------------ | ---------------------------------------------- | -------------------------------------------- | ------------------------------------ |
-| Granularity  | One decision per file, linkable from code      | Many decisions in one file, linked by anchor | None                                 |
-| Redundancy   | A summary may repeat a fact from the design    | Same, and the log grows into a second design | Reasons repeat in each pull request  |
-| Coupling     | A record links to the ones it replaces         | Entries depend on their order in the file    | Reasons tied to a thread on a host   |
-| Retention    | A superseded record stays, marked, and is kept | Old entries blur into the new ones           | Lost when the thread is hard to find |
-| Flow control | A map entry or a review can cite the number    | A review must quote a passage                | A reviewer must ask again            |
+| Dial         | One file per decision                                             | One log file                                            | No records                                               |
+| ------------ | ----------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| Granularity  | One decision per file, so one can be read or linked alone         | One coarse file, and one decision cannot be taken alone | None                                                     |
+| Redundancy   | One place per decision, though a summary may repeat a design      | One place, but the log grows into a second design       | Each pull request restates its reasons, in its own words |
+| Coupling     | A record names the one it supersedes, and that one changes status | Entries depend on their order in the file               | The reasons depend on a thread on a host                 |
+| Retention    | Not at stake                                                      | Not at stake                                            | Not at stake                                             |
+| Flow control | Not at stake                                                      | Not at stake                                            | Not at stake                                             |
 
 ## Decision
 
@@ -46,7 +50,8 @@ A record holds, in this order:
 3. **Context**: the forces and facts that made a decision necessary.
 4. **Options**: the realistic choices, each in a line or two. When the choice
    has real trade-offs, compare the options in a table on the five dials:
-   granularity, redundancy, coupling, retention and flow control.
+   granularity, redundancy, coupling, retention and flow control, and write "not
+   at stake" for a dial that does not bite.
 5. **Decision**: the option chosen, stated as an instruction.
 6. **Consequences**: what becomes easier, what becomes harder, and what to
    revisit.

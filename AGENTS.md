@@ -5,6 +5,10 @@ tool runs it. They are short on purpose. Hooks and CI enforce the ones that
 matter most, because an instruction file alone does not reliably change what an
 agent does.
 
+The gate script, the hooks, CI, `docs/map.md` and the skills under
+`.agents/skills/` named below arrive later in phase 1, so some of them do not
+exist yet.
+
 ## Rules
 
 1. **Run the full gate before you say done, and show the output.** The gate is
@@ -22,9 +26,11 @@ agent does.
 4. **No `unsafe`, `unwrap`, `expect`, `panic!`, `todo!` or unchecked indexing
    outside tests.** Return typed errors, because a panic on request input is a
    denial-of-service bug.
-5. **Send SQL only through sqlx with bound parameters.** Never build SQL with
-   `format!`, and keep the prepared query data committed and checked, because
-   injection is the most common failure in AI-written code.
+5. **Write SQL through `sqlx::query!` and its macro family, with bound
+   parameters.** Never build SQL with `format!`. Commit `.sqlx` and keep
+   `cargo sqlx prepare --check` green once queries exist. This does not forbid
+   sqlx's connection ping. Injection and XSS are the most common failures in the
+   security benchmarks, and compile-time checks catch invented columns.
 6. **Treat every external input as hostile and validate it at the boundary.**
    That covers HTTP bodies, tool arguments, uploaded files, fetched URLs, file
    paths and model output. Give each new parser a size limit and a property test
@@ -49,8 +55,9 @@ agent does.
     public API and auth, because design and security judgment came from humans
     in the cases studied.
 11. **Cover edge cases on purpose:** empty, maximum size, Unicode, negative,
-    duplicate, concurrent and malformed input. Use property tests for
-    invariants, and kill surviving mutants by strengthening tests, never by
+    duplicate, concurrent and malformed input. Use property tests for invariants
+    such as roundtrip, idempotence and ordering. Run `cargo mutants --in-diff`
+    on your change and kill surviving mutants by strengthening tests, never by
     deleting code, because coverage shows lines reached, not lines checked.
 12. **Ask for a separate review, and verify what it says.** Give a fresh session
     the diff and the spec but not your reasoning, plus a security checklist:
@@ -61,19 +68,20 @@ agent does.
 13. **Measure before you optimize.** Attach a profile or a benchmark delta to
     every performance change, and check the database before Rust CPU, because
     optimization without a measurement adds complexity for no proven gain.
-14. **Keep money and secrets out of tests and code.** Tests never touch the
-    network. Paid-API tests live behind a feature flag or `#[ignore]` and use
-    recorded fixtures elsewhere. Never log keys or full request bodies, and
-    never edit a workflow to add secret access, because an untrusted pull
-    request must not spend money.
+14. **Keep money and secrets out of tests and code.** `cargo test` never touches
+    the network by default. Paid-API tests live behind a feature flag or
+    `#[ignore]`, read keys from the environment only in the protected CI
+    environment, and use recorded fixtures elsewhere. Never log keys or full
+    request bodies, and never edit a workflow to add secret access, because an
+    untrusted pull request must not spend money.
 15. **Report honestly and explain.** End each pull request description with what
     you ran, what you did not run, and what you are unsure of, and mark claims
     you did not verify. Explain any non-obvious design choice in two or three
     sentences, because the maintainer must be able to review what ships.
-16. **Sign off a commit only on the instruction of the person who directs you.**
-    Then add that person's `Signed-off-by:` line and your own `Co-Authored-By:`
-    trailer, and leave the review to that person before the pull request merges,
-    because the sign-off is a certification only a human can make. See
+16. **Add a sign-off only when the person who directs you has told you to
+    commit.** Then add that person's `Signed-off-by:` line and your own
+    `Co-Authored-By:` trailer. That person reviews the pull request before it
+    merges, because the sign-off is a certification only a human can make. See
     [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Where things live
@@ -88,3 +96,10 @@ agent does.
   catches it.
 - `.agents/skills/`: the skills any agent can load. `.claude/skills/` links to
   them.
+
+## Plugins
+
+Claude Code reads `.claude/settings.json`, which names the superpowers plugin
+for brainstorming, plans, test-driven development and debugging. Naming it turns
+it on but does not download it, so install it once on your machine with
+`/plugin install superpowers@claude-plugins-official`.
