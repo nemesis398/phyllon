@@ -1,0 +1,52 @@
+{
+  "name": "Frühling",
+  "chosen": "2026-10-29",
+  "meaning": {
+    "blue": "school-ink blue: the brand, links, primary actions",
+    "leaf": "checked, approved, right",
+    "sunflower": "waiting for approval, marked for review (the highlighter)",
+    "red-pen": "a mistake, a failed check (the teacher's red pen)",
+    "ink": "body text",
+    "muted": "secondary text",
+    "paper": "page background",
+    "surface": "cards and panels",
+    "line": "borders and the faint grid",
+    "seed": "the light end of the logo's seed gradient"
+  },
+  "light": {
+    "paper": "#FFFFFF",
+    "surface": "#F4F7FF",
+    "line": "#DFE6F7",
+    "ink": "#18213A",
+    "muted": "#4F5B78",
+    "blue": "#2B54C8",
+    "blue-soft": "#E2E9FC",
+    "seed": "#93ACF5",
+    "leaf": "#16804A",
+    "leaf-text": "#0F7240",
+    "leaf-soft": "#D9F3E4",
+    "sunflower": "#F5B700",
+    "sunflower-text": "#5E4500",
+    "sunflower-soft": "#FFF1C2",
+    "red-pen": "#BF2E24",
+    "red-pen-soft": "#FDE3E0"
+  },
+  "dark": {
+    "paper": "#0F1A3A",
+    "surface": "#172452",
+    "line": "#243369",
+    "ink": "#EEF2FF",
+    "muted": "#AEB9DA",
+    "blue": "#93ACFF",
+    "blue-soft": "#22357A",
+    "seed": "#4F6BD8",
+    "leaf": "#5FDB98",
+    "leaf-text": "#5FDB98",
+    "leaf-soft": "#163F2D",
+    "sunflower": "#FFD24D",
+    "sunflower-text": "#FFD24D",
+    "sunflower-soft": "#3D3414",
+    "red-pen": "#FF8A80",
+    "red-pen-soft": "#4C1F25"
+  }
+}

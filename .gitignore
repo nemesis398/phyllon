@@ -1,0 +1,8 @@
+# Brainstorming companion (local session state)
+.superpowers/
+
+# Rust build output
+/target/
+
+# Python bytecode from brand/generate.py
+__pycache__/
