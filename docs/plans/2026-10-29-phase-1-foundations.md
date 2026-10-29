@@ -125,7 +125,7 @@ and ends the same way:
 - Produces: `npx prettier --check .` and `npx markdownlint-cli2` as the Markdown
   check every later task runs.
 
-- [ ] **Step 1: Write the configs.** `.prettierrc.yaml` sets `proseWrap: always`
+- [x] **Step 1: Write the configs.** `.prettierrc.yaml` sets `proseWrap: always`
       and `printWidth: 80`. `.markdownlint-cli2.yaml` sets `MD013` to
       `line_length: 80`, `tables: false`, `code_blocks: false`; `MD024` to
       `siblings_only: true`; and ignores `.superpowers/**`, `node_modules/**`
@@ -137,15 +137,17 @@ and ends the same way:
       for both tools is simpler, and it is still the only Node code) (the
       versions in nvim's Mason today are prettier 3.9.10 and markdownlint-cli2
       0.23.3; take them if they pass the 7-day rule).
-- [ ] **Step 2: Run the checks.** Run
+- [x] **Step 2: Run the checks.** Run
       `npm ci && npx prettier --check . && npx markdownlint-cli2`. Expected:
       prettier passes; markdownlint reports at most the lines that hold one
       unbreakable inline code span or URL.
-- [ ] **Step 3: Fix what remains** by rewording the sentence around the span
+- [x] **Step 3: Fix what remains** by rewording the sentence around the span
       (expected in `docs/research/prior-art.md`, the `AnswerTest` signature
       line). Run the checks again; both pass.
-- [ ] **Step 4: Ship** (see "How every task ends"). Title:
+- [x] **Step 4: Ship** (see "How every task ends"). Title:
       `docs: add the phase 1 design and plan, and format the docs`.
+
+Done: merged in e853d45 (#1) on 2026-10-29.
 
 ### Task 2: Repository files
 

@@ -1,0 +1,25 @@
+name: Proposal
+description: Suggest a change or a new feature.
+title: "proposal: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description:
+        What goes wrong or is missing today. Describe it before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: who
+    attributes:
+      label: Who has it
+      description: Who runs into this problem, and how often.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description:
+        Optional. A solution you have in mind, and what you considered instead.

@@ -11,3 +11,4 @@ ignores:
   - ".superpowers/**"
   - "node_modules/**"
   - "target/**"
+  - "CODE_OF_CONDUCT.md"
