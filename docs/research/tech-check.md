@@ -1,168 +1,681 @@
 # Technical Check
 
-Checked on 2026-10-29 against primary sources (specs, official docs, repos, registries, release notes). Each fact carries its source URL. Confidence labels:
+Checked on 2026-10-29 against primary sources (specs, official docs, repos,
+registries, release notes). Each fact carries its source URL. Confidence labels:
 
-- **primary**: verified in a primary source (spec, official docs, source code, registry metadata).
-- **secondary**: from a blog, issue comment, benchmark repo or other third party.
+- **primary**: verified in a primary source (spec, official docs, source code,
+  registry metadata).
+- **secondary**: from a blog, issue comment, benchmark repo or other third
+  party.
 - **unverified**: inferred, estimated, or not found. Treat as a hypothesis.
 
-Registry numbers come from the crates.io API, the Docker Hub API and the GitHub API on the check date.
+Registry numbers come from the crates.io API, the Docker Hub API and the GitHub
+API on the check date.
 
 ## 1. MCP specification (current version)
 
-The current revision is **2026-07-28**, published after 2025-11-25. It is the largest change since MCP launched. Key changes: no protocol-level sessions and no `Mcp-Session-Id`, no `initialize` handshake (every request carries version and client capabilities in `_meta`), a mandatory `server/discover` RPC, Multi Round-Trip Requests (MRTR) replacing server-initiated requests, `subscriptions/listen` for change notifications, Dynamic Client Registration deprecated in favor of Client ID Metadata Documents (CIMD), and Roots, Sampling and Logging deprecated. Sources: https://modelcontextprotocol.io/specification/versioning, https://modelcontextprotocol.io/specification/2026-07-28/changelog. Confidence: primary.
+The current revision is **2026-07-28**, published after 2025-11-25. It is the
+largest change since MCP launched. Key changes: no protocol-level sessions and
+no `Mcp-Session-Id`, no `initialize` handshake (every request carries version
+and client capabilities in `_meta`), a mandatory `server/discover` RPC, Multi
+Round-Trip Requests (MRTR) replacing server-initiated requests,
+`subscriptions/listen` for change notifications, Dynamic Client Registration
+deprecated in favor of Client ID Metadata Documents (CIMD), and Roots, Sampling
+and Logging deprecated. Sources:
+<https://modelcontextprotocol.io/specification/versioning>,
+<https://modelcontextprotocol.io/specification/2026-07-28/changelog>.
+Confidence: primary.
 
 ### 1a. Passing a file (PDF, image) to a tool
 
-- Tool arguments are plain JSON. The 2026-07-28 tools spec has no file or binary input type. Tool results can carry text, image (base64), audio, `resource_link` and embedded resources, so files flow from server to client but not the other way. Source: https://modelcontextprotocol.io/specification/2026-07-28/server/tools. Confidence: primary.
-- No standard upload mechanism exists yet. SEP-2356 (declarative `x-mcp-file` inputs, files as RFC 2397 data URIs, a `fileInputs` client capability) was closed unmerged on 2026-06-26 "in favor of #2631". SEP-2631 (File Objects and Transfer: `files/authorizeUpload`, `files/authorizeDownload`, URI-string file inputs) was also closed unmerged on 2026-10-14. The File Uploads working group now continues as an experimental extension (`modelcontextprotocol/experimental-ext-file-uploads`, pushed 2026-10-21, README is one line). Sources: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2356, https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2631, https://modelcontextprotocol.io/community/working-groups/file-uploads, https://github.com/modelcontextprotocol/experimental-ext-file-uploads. Confidence: primary (PR state and WG charter); that no client ships the extension is unverified.
-- The only shipping file input is OpenAI-specific: `_meta["openai/fileParams"]` makes ChatGPT pass `{ download_url, file_id, mime_type?, file_name? }` objects. Source: https://developers.openai.com/plugins/reference. Confidence: primary, but ChatGPT only. A third-party survey says Claude has no equivalent and recommends a short-lived backend upload session or an authenticated cloud import for portable flows. Source: https://sunpeak.ai/blogs/file-uploads-mcp-apps/. Confidence: secondary.
-- Base64 in arguments forces the model to emit the bytes as output tokens. One MCP server maintainer reported a 3,232-byte PNG that the tool output showed as 4,312 base64 characters but the call carried as 4,280, still valid base64 and so silently corrupted. They built a single-use upload ticket route instead. Source: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2631 (comment of 2026-10-02). Confidence: secondary.
+- Tool arguments are plain JSON. The 2026-07-28 tools spec has no file or binary
+  input type. Tool results can carry text, image (base64), audio,
+  `resource_link` and embedded resources, so files flow from server to client
+  but not the other way. Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/server/tools>.
+  Confidence: primary.
+- No standard upload mechanism exists yet. SEP-2356 (declarative `x-mcp-file`
+  inputs, files as RFC 2397 data URIs, a `fileInputs` client capability) was
+  closed unmerged on 2026-06-26 "in favor of #2631". SEP-2631 (File Objects and
+  Transfer: `files/authorizeUpload`, `files/authorizeDownload`, URI-string file
+  inputs) was also closed unmerged on 2026-10-14. The File Uploads working group
+  now continues as an experimental extension
+  (`modelcontextprotocol/experimental-ext-file-uploads`, pushed 2026-10-21,
+  README is one line). Sources:
+  <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2356>,
+  <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2631>,
+  <https://modelcontextprotocol.io/community/working-groups/file-uploads>,
+  <https://github.com/modelcontextprotocol/experimental-ext-file-uploads>.
+  Confidence: primary (PR state and WG charter); that no client ships the
+  extension is unverified.
+- The only shipping file input is OpenAI-specific: `_meta["openai/fileParams"]`
+  makes ChatGPT pass `{ download_url, file_id, mime_type?, file_name? }`
+  objects. Source: <https://developers.openai.com/plugins/reference>.
+  Confidence: primary, but ChatGPT only. A third-party survey says Claude has no
+  equivalent and recommends a short-lived backend upload session or an
+  authenticated cloud import for portable flows. Source:
+  <https://sunpeak.ai/blogs/file-uploads-mcp-apps/>. Confidence: secondary.
+- Base64 in arguments forces the model to emit the bytes as output tokens. One
+  MCP server maintainer reported a 3,232-byte PNG that the tool output showed as
+  4,312 base64 characters but the call carried as 4,280, still valid base64 and
+  so silently corrupted. They built a single-use upload ticket route instead.
+  Source:
+  <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2631>
+  (comment of 2026-10-02). Confidence: secondary.
 
-Implication for the design: do not design around file arguments. Offer two paths: (1) upload in the platform's own web UI, then hand the AI client a handle (an ID) to the stored document; (2) a tool that mints a single-use, short-lived upload URL (the agent runs `curl` in Claude Code or Codex; a human uses the browser). Keep the tool surface compatible with the future extension by taking a document handle, not bytes.
+Implication for the design: do not design around file arguments. Offer two
+paths: (1) upload in the platform's own web UI, then hand the AI client a handle
+(an ID) to the stored document; (2) a tool that mints a single-use, short-lived
+upload URL (the agent runs `curl` in Claude Code or Codex; a human uses the
+browser). Keep the tool surface compatible with the future extension by taking a
+document handle, not bytes.
 
 ### 1b. Elicitation
 
-- Elicitation lets a server ask the human, through the client, for input mid-request. Form mode takes a flat schema of primitives and returns `accept`, `decline` or `cancel`. URL mode sends the user to an external URL for interactions that must not pass through the client. Source: https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation. Confidence: primary.
-- In 2026-07-28 it rides on MRTR: the server answers `tools/call` with `resultType: "input_required"`, `inputRequests` and an opaque `requestState`; the client retries with `inputResponses`. Servers MUST treat `requestState` as attacker-controlled and protect it with HMAC or AEAD, MUST NOT request elicitation the client did not declare, and MUST enforce single use themselves. Source: https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr. Confidence: primary.
-- Claude Code: supported, form and URL mode. An `Elicitation` hook can answer or decline automatically and no dialog appears. For long-running MCP tasks, elicitation is served only in interactive terminal sessions, and non-interactive runs ask the server to cancel (the Agent SDK offers an `onElicitation` callback; behavior for plain tool calls in `-p` mode was not checked). Sources: https://code.claude.com/docs/en/mcp.md (section "Respond to MCP elicitation requests"), https://code.claude.com/docs/en/hooks.md (section "Elicitation"). Confidence: primary.
-- Open WebUI: supported, form and link requests, shown with the server ID. The dialog waits up to 120 seconds and only appears while that chat is open in a browser tab; otherwise the request is cancelled at once. Source: https://docs.openwebui.com/features/extensibility/mcp/. Confidence: primary.
-- Codex CLI: the client implements elicitation (Codex source is built on `rmcp`), but there are open bug reports. Issue #13405 (spec compliance bug, open) and #38707 (accept never reached the server over remote streamable HTTP in ChatGPT Desktop, 2026-08-15, closed, resolution not checked). Sources: https://github.com/openai/codex/issues/13405, https://github.com/openai/codex/issues/38707. Confidence: secondary. A third-party survey lists 13 clients with documented elicitation support, among them Claude Code, Codex CLI, Cursor, VS Code and GitHub Copilot CLI: https://www.developersdigest.tech/blog/mcp-client-features-explained-2026. Confidence: secondary.
-- Claude Desktop and claude.ai: Claude's connector docs list tools, prompts and resources as supported and do not mention elicitation (resource subscriptions and sampling are listed as unsupported). Source: https://claude.com/docs/connectors/building/index.md. Confidence: unverified for elicitation.
+- Elicitation lets a server ask the human, through the client, for input
+  mid-request. Form mode takes a flat schema of primitives and returns `accept`,
+  `decline` or `cancel`. URL mode sends the user to an external URL for
+  interactions that must not pass through the client. Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation>.
+  Confidence: primary.
+- In 2026-07-28 it rides on MRTR: the server answers `tools/call` with
+  `resultType: "input_required"`, `inputRequests` and an opaque `requestState`;
+  the client retries with `inputResponses`. Servers MUST treat `requestState` as
+  attacker-controlled and protect it with HMAC or AEAD, MUST NOT request
+  elicitation the client did not declare, and MUST enforce single use
+  themselves. Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr>.
+  Confidence: primary.
+- Claude Code: supported, form and URL mode. An `Elicitation` hook can answer or
+  decline automatically and no dialog appears. For long-running MCP tasks,
+  elicitation is served only in interactive terminal sessions, and
+  non-interactive runs ask the server to cancel (the Agent SDK offers an
+  `onElicitation` callback; behavior for plain tool calls in `-p` mode was not
+  checked). Sources: <https://code.claude.com/docs/en/mcp.md> (section "Respond
+  to MCP elicitation requests"), <https://code.claude.com/docs/en/hooks.md>
+  (section "Elicitation"). Confidence: primary.
+- Open WebUI: supported, form and link requests, shown with the server ID. The
+  dialog waits up to 120 seconds and only appears while that chat is open in a
+  browser tab; otherwise the request is cancelled at once. Source:
+  <https://docs.openwebui.com/features/extensibility/mcp/>. Confidence: primary.
+- Codex CLI: the client implements elicitation (Codex source is built on
+  `rmcp`), but there are open bug reports. Issue #13405 (spec compliance bug,
+  open) and #38707 (accept never reached the server over remote streamable HTTP
+  in ChatGPT Desktop, 2026-08-15, closed, resolution not checked). Sources:
+  <https://github.com/openai/codex/issues/13405>,
+  <https://github.com/openai/codex/issues/38707>. Confidence: secondary. A
+  third-party survey lists 13 clients with documented elicitation support, among
+  them Claude Code, Codex CLI, Cursor, VS Code and GitHub Copilot CLI:
+  <https://www.developersdigest.tech/blog/mcp-client-features-explained-2026>.
+  Confidence: secondary.
+- Claude Desktop and claude.ai: Claude's connector docs list tools, prompts and
+  resources as supported and do not mention elicitation (resource subscriptions
+  and sampling are listed as unsupported). Source:
+  <https://claude.com/docs/connectors/building/index.md>. Confidence: unverified
+  for elicitation.
 
-Fit for "ask the human to confirm this approval": partial. The protocol gives a human-facing dialog, but the client decides who answers. A Claude Code hook can auto-accept, headless runs may not serve it, Codex has open bugs, Claude Desktop is undocumented. Elicitation proves nothing about who clicked.
+Fit for "ask the human to confirm this approval": partial. The protocol gives a
+human-facing dialog, but the client decides who answers. A Claude Code hook can
+auto-accept, headless runs may not serve it, Codex has open bugs, Claude Desktop
+is undocumented. Elicitation proves nothing about who clicked.
 
-Implication for the design: use elicitation only as a convenience layer. Make the binding confirmation out-of-band: the admin tool returns "pending approval" with a link (or uses URL-mode elicitation) to the platform's own web UI, where the human approves under an authenticated browser session. Keep a deny-by-default policy when the client cannot elicit.
+Implication for the design: use elicitation only as a convenience layer. Make
+the binding confirmation out-of-band: the admin tool returns "pending approval"
+with a link (or uses URL-mode elicitation) to the platform's own web UI, where
+the human approves under an authenticated browser session. Keep a
+deny-by-default policy when the client cannot elicit.
 
 ### 1c. Authorization
 
-- Authorization is optional in the spec. For HTTP transports implementations SHOULD follow it: OAuth 2.1 (draft-13) with the MCP server as resource server, Protected Resource Metadata (RFC 9728) MUST, resource indicators (RFC 8707), CIMD SHOULD, DCR MAY and deprecated. Static bearer tokens are not part of the flow, but the bearer header itself (RFC 6750) is. Sources: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization, https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration. Confidence: primary.
-- Claude Code: static headers work (`claude mcp add --transport http NAME URL --header "Authorization: Bearer TOKEN"`, `headers` with `${VAR}` expansion, `headersHelper` for generated tokens). OAuth 2.0 also works (DCR, pre-configured client ID, `claude mcp login`). A configured `Authorization` header disables the OAuth fallback. Source: https://code.claude.com/docs/en/mcp.md. Confidence: primary.
-- Codex CLI: remote streamable HTTP servers with `bearer_token_env_var`, `http_headers`, `env_http_headers` and `http_headers_helper`; OAuth with CIMD or DCR (`codex mcp login`). Source: https://developers.openai.com/codex/mcp. Confidence: primary.
-- Open WebUI (v0.12.5, 2026-10-29): connection type "MCP (Streamable HTTP)" with auth None, Bearer (one key per connection), Session, OAuth, OAuth 2.1 (DCR) or OAuth 2.1 (Static). Only administrators can add MCP servers, and users reach them through Access Control on that connection. It connects on 2026-07-28 and on older revisions. Source: https://docs.openwebui.com/features/extensibility/mcp/. Confidence: primary.
-- Claude Desktop and claude.ai: custom connectors by URL, OAuth (DCR or CIMD, following the 2025-03-26, 2025-06-18 and 2025-11-25 authorization specs) or no auth. Static request headers exist as a beta for a limited set of organizations. Claude connects from Anthropic's infrastructure, so a server on a private network needs a public endpoint or an MCP tunnel (Enterprise, research preview). Sources: https://claude.com/docs/connectors/building/authentication.md, https://claude.com/docs/connectors/custom/add-unlisted.md, https://claude.com/docs/connectors/mcp-tunnels/overview.md. Confidence: primary.
+- Authorization is optional in the spec. For HTTP transports implementations
+  SHOULD follow it: OAuth 2.1 (draft-13) with the MCP server as resource server,
+  Protected Resource Metadata (RFC 9728) MUST, resource indicators (RFC 8707),
+  CIMD SHOULD, DCR MAY and deprecated. Static bearer tokens are not part of the
+  flow, but the bearer header itself (RFC 6750) is. Sources:
+  <https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization>,
+  <https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration>.
+  Confidence: primary.
+- Claude Code: static headers work
+  (`claude mcp add --transport http NAME URL --header "Authorization: Bearer TOKEN"`,
+  `headers` with `${VAR}` expansion, `headersHelper` for generated tokens).
+  OAuth 2.0 also works (DCR, pre-configured client ID, `claude mcp login`). A
+  configured `Authorization` header disables the OAuth fallback. Source:
+  <https://code.claude.com/docs/en/mcp.md>. Confidence: primary.
+- Codex CLI: remote streamable HTTP servers with `bearer_token_env_var`,
+  `http_headers`, `env_http_headers` and `http_headers_helper`; OAuth with CIMD
+  or DCR (`codex mcp login`). Source: <https://developers.openai.com/codex/mcp>.
+  Confidence: primary.
+- Open WebUI (v0.12.5, 2026-10-29): connection type "MCP (Streamable HTTP)" with
+  auth None, Bearer (one key per connection), Session, OAuth, OAuth 2.1 (DCR) or
+  OAuth 2.1 (Static). Only administrators can add MCP servers, and users reach
+  them through Access Control on that connection. It connects on 2026-07-28 and
+  on older revisions. Source:
+  <https://docs.openwebui.com/features/extensibility/mcp/>. Confidence: primary.
+- Claude Desktop and claude.ai: custom connectors by URL, OAuth (DCR or CIMD,
+  following the 2025-03-26, 2025-06-18 and 2025-11-25 authorization specs) or no
+  auth. Static request headers exist as a beta for a limited set of
+  organizations. Claude connects from Anthropic's infrastructure, so a server on
+  a private network needs a public endpoint or an MCP tunnel (Enterprise,
+  research preview). Sources:
+  <https://claude.com/docs/connectors/building/authentication.md>,
+  <https://claude.com/docs/connectors/custom/add-unlisted.md>,
+  <https://claude.com/docs/connectors/mcp-tunnels/overview.md>. Confidence:
+  primary.
 
-Implication for the design: support two credential paths. (1) Static, profile-bound API tokens in the `Authorization` header: covers Claude Code, Codex CLI and Open WebUI (one connection per profile, scoped by Open WebUI group). (2) A real OAuth 2.1 authorization server (PRM, CIMD, DCR for fallback) for Claude Desktop and claude.ai, which also needs a public HTTPS endpoint. Make path 2 a later phase and state that self-hosters on a LAN cannot use Claude Desktop without exposing the server.
+Implication for the design: support two credential paths. (1) Static,
+profile-bound API tokens in the `Authorization` header: covers Claude Code,
+Codex CLI and Open WebUI (one connection per profile, scoped by Open WebUI
+group). (2) A real OAuth 2.1 authorization server (PRM, CIMD, DCR for fallback)
+for Claude Desktop and claude.ai, which also needs a public HTTPS endpoint. Make
+path 2 a later phase and state that self-hosters on a LAN cannot use Claude
+Desktop without exposing the server.
 
 ### 1d. Per-token tool lists and list-change notifications
 
-- Yes. The spec says `tools/list` "MUST NOT vary per-connection or as a side effect of other requests", but "MAY vary by the authorization presented on the request". Source: https://modelcontextprotocol.io/specification/2026-07-28/server/tools. Confidence: primary.
-- Cache scope matters: results of an authenticated `tools/list` should declare `cacheScope: "private"`. Private results must not be shared across authorization contexts, while a `"public"` result may be cached by a gateway and served to others. The spec also says not to rely on `cacheScope` alone to prevent unauthorized access. Source: https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching. Confidence: primary.
-- Change notifications: `notifications/tools/list_changed` goes only to clients that opened `subscriptions/listen` with `toolsListChanged: true`. The old GET stream and session are gone. Source: https://modelcontextprotocol.io/specification/2026-07-28/server/tools. Confidence: primary. Claude Code's v2 runtime holds that stream open; in `-p` mode only the tool list refreshes. Source: https://code.claude.com/docs/en/mcp.md ("Dynamic tool updates"). Confidence: primary. Open WebUI behavior on list changes: unverified. The Codex changelog mentions "Honor MCP tool-list changes within a turn" (PR #54656), transport not checked: https://developers.openai.com/codex/changelog. Confidence: secondary.
+- Yes. The spec says `tools/list` "MUST NOT vary per-connection or as a side
+  effect of other requests", but "MAY vary by the authorization presented on the
+  request". Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/server/tools>.
+  Confidence: primary.
+- Cache scope matters: results of an authenticated `tools/list` should declare
+  `cacheScope: "private"`. Private results must not be shared across
+  authorization contexts, while a `"public"` result may be cached by a gateway
+  and served to others. The spec also says not to rely on `cacheScope` alone to
+  prevent unauthorized access. Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching>.
+  Confidence: primary.
+- Change notifications: `notifications/tools/list_changed` goes only to clients
+  that opened `subscriptions/listen` with `toolsListChanged: true`. The old GET
+  stream and session are gone. Source:
+  <https://modelcontextprotocol.io/specification/2026-07-28/server/tools>.
+  Confidence: primary. Claude Code's v2 runtime holds that stream open; in `-p`
+  mode only the tool list refreshes. Source:
+  <https://code.claude.com/docs/en/mcp.md> ("Dynamic tool updates"). Confidence:
+  primary. Open WebUI behavior on list changes: unverified. The Codex changelog
+  mentions "Honor MCP tool-list changes within a turn" (PR #54656), transport
+  not checked: <https://developers.openai.com/codex/changelog>. Confidence:
+  secondary.
 
-Implication for the design: derive the tool list from the authenticated token on every `tools/list` call, mark it `private`, and re-check the profile in every `tools/call` (hidden tools must also be rejected when called). Do not rely on `list_changed`: a profile change takes effect after a client reconnect or after `ttlMs` expires. Keep `ttlMs` short.
+Implication for the design: derive the tool list from the authenticated token on
+every `tools/list` call, mark it `private`, and re-check the profile in every
+`tools/call` (hidden tools must also be rejected when called). Do not rely on
+`list_changed`: a profile change takes effect after a client reconnect or after
+`ttlMs` expires. Keep `ttlMs` short.
 
 ### 1e. Prompts and resources (shipping tutor rules)
 
-- Claude Code: MCP prompts appear as `/mcp__server__prompt` commands; resources are reachable by `@server:uri`. It also reads the server `instructions` field, cut at 4,096 characters. Source: https://code.claude.com/docs/en/mcp.md. Confidence: primary.
-- Claude Desktop and claude.ai: tools, prompts and resources are listed as supported. Source: https://claude.com/docs/connectors/building/index.md. Confidence: primary. Whether they read `instructions`: unverified.
-- Codex CLI: no MCP prompts. Issue #5059 is open, and a 2026-09-27 comment states "On 0.156.0 Codex never sends `prompts/list` or `prompts/get`". Issue #8342 was closed as a duplicate on 2026-08-06. Sources: https://github.com/openai/codex/issues/5059, https://github.com/openai/codex/issues/8342. Confidence: secondary. Codex does read the `instructions` field and advises keeping the first 512 characters self-contained. Source: https://developers.openai.com/codex/mcp. Confidence: primary.
-- Open WebUI: no prompt support documented; the pull request "fetch prompts from mcp servers" (#19061) was closed unmerged. The server `instructions` are appended to the system prompt. Sources: https://docs.openwebui.com/features/extensibility/mcp/, https://github.com/open-webui/open-webui/pull/19061. Confidence: primary for instructions, secondary for the prompts status.
+- Claude Code: MCP prompts appear as `/mcp__server__prompt` commands; resources
+  are reachable by `@server:uri`. It also reads the server `instructions` field,
+  cut at 4,096 characters. Source: <https://code.claude.com/docs/en/mcp.md>.
+  Confidence: primary.
+- Claude Desktop and claude.ai: tools, prompts and resources are listed as
+  supported. Source: <https://claude.com/docs/connectors/building/index.md>.
+  Confidence: primary. Whether they read `instructions`: unverified.
+- Codex CLI: no MCP prompts. Issue #5059 is open, and a 2026-09-27 comment
+  states "On 0.156.0 Codex never sends `prompts/list` or `prompts/get`". Issue
+  #8342 was closed as a duplicate on 2026-08-06. Sources:
+  <https://github.com/openai/codex/issues/5059>,
+  <https://github.com/openai/codex/issues/8342>. Confidence: secondary. Codex
+  does read the `instructions` field and advises keeping the first 512
+  characters self-contained. Source: <https://developers.openai.com/codex/mcp>.
+  Confidence: primary.
+- Open WebUI: no prompt support documented; the pull request "fetch prompts from
+  mcp servers" (#19061) was closed unmerged. The server `instructions` are
+  appended to the system prompt. Sources:
+  <https://docs.openwebui.com/features/extensibility/mcp/>,
+  <https://github.com/open-webui/open-webui/pull/19061>. Confidence: primary for
+  instructions, secondary for the prompts status.
 
-Implication for the design: put the tutor rules in the server `instructions` (works in Claude Code, Codex and Open WebUI; keep the first 512 characters self-contained and the total under 4,096) and repeat the hard rules in tool descriptions. Offer MCP prompts as an optional extra for Claude Code and Claude Desktop. Add a `get_tutor_rules` tool as the fallback for clients that read neither.
+Implication for the design: put the tutor rules in the server `instructions`
+(works in Claude Code, Codex and Open WebUI; keep the first 512 characters
+self-contained and the total under 4,096) and repeat the hard rules in tool
+descriptions. Offer MCP prompts as an optional extra for Claude Code and Claude
+Desktop. Add a `get_tutor_rules` tool as the fallback for clients that read
+neither.
 
 ## 2. Rust MCP SDK (`rmcp`)
 
-- Version 3.8.0 (2026-10-26), Apache-2.0, MSRV 1.88, edition 2024. 41.9 million downloads, 2,356 reverse dependencies, 31 open issues. Source: https://crates.io/crates/rmcp, https://github.com/modelcontextprotocol/rust-sdk. Confidence: primary.
-- It is a Tier 1 SDK in the official list (with TypeScript, Python, C#, Go, Ruby). Source: https://modelcontextprotocol.io/docs/sdk. Confidence: primary.
-- Spec support: the README says it "implements the stable MCP 2026-07-28 specification while remaining fully compatible with the 2025-11-25 release and earlier": discovery, subscriptions, tasks, caching, MRTR, standard HTTP headers. Source: https://github.com/modelcontextprotocol/rust-sdk/blob/main/README.md. Confidence: primary.
-- Churn: 1.0 on 2026-03-03, 2.0 on 2026-06-29, 3.0 on 2026-07-23, then a minor release every one to three weeks (3.8.0 on 2026-10-26). Source: crates.io version list. Confidence: primary. A 3.x migration guide exists (discussion #969).
-- Streamable HTTP server: `StreamableHttpService` is a Tower service you nest into an axum router (`nest_service("/mcp", service)`). 2026-07-28 clients are served statelessly by default (no session ID, no GET stream); `legacy_session_mode` controls older clients; `with_json_response(true)` returns plain JSON for simple tools. The service factory runs per request, so keep state in a shared handle. Source: README section "Stateless Streamable HTTP". Confidence: primary.
-- Auth: the crate's `auth` feature is OAuth 2.1 for the client side (PKCE, PRM, CIMD, DCR, scope upgrade, token refresh; `docs/OAUTH_SUPPORT.md`). Server-side authentication is application code: axum middleware that validates the bearer token (examples `simple_auth_streamhttp.rs`, `complex_auth_streamhttp.rs` with protected-resource metadata and a `/oauth/register` endpoint, and `cimd_auth_streamhttp.rs`). The HTTP request `Parts` are injected into the MCP request extensions, so a middleware can attach an auth context that `list_tools` and `call_tool` read per request. Sources: https://github.com/modelcontextprotocol/rust-sdk/tree/main/examples/servers/src, https://github.com/modelcontextprotocol/rust-sdk/blob/main/crates/rmcp/src/transport/streamable_http_server/tower.rs. Confidence: primary.
-- Elicitation: server API `peer.elicit::<T>()` (feature `elicitation`) for legacy-style calls, and `InputRequiredResult` for MRTR, with an HMAC "request-state" codec (`seal_json`, `open_json`, feature `request-state`). The SDK only forwards `input_required` to peers that negotiated 2026-07-28 or newer; older peers get a protocol error. Source: README sections "Elicitation" and "Multi-Round-Trip Requests". Confidence: primary.
+- Version 3.8.0 (2026-10-26), Apache-2.0, MSRV 1.88, edition 2024. 41.9 million
+  downloads, 2,356 reverse dependencies, 31 open issues. Source:
+  <https://crates.io/crates/rmcp>,
+  <https://github.com/modelcontextprotocol/rust-sdk>. Confidence: primary.
+- It is a Tier 1 SDK in the official list (with TypeScript, Python, C#, Go,
+  Ruby). Source: <https://modelcontextprotocol.io/docs/sdk>. Confidence:
+  primary.
+- Spec support: the README says it "implements the stable MCP 2026-07-28
+  specification while remaining fully compatible with the 2025-11-25 release and
+  earlier": discovery, subscriptions, tasks, caching, MRTR, standard HTTP
+  headers. Source:
+  <https://github.com/modelcontextprotocol/rust-sdk/blob/main/README.md>.
+  Confidence: primary.
+- Churn: 1.0 on 2026-03-03, 2.0 on 2026-06-29, 3.0 on 2026-07-23, then a minor
+  release every one to three weeks (3.8.0 on 2026-10-26). Source: crates.io
+  version list. Confidence: primary. A 3.x migration guide exists (discussion
+  #969).
+- Streamable HTTP server: `StreamableHttpService` is a Tower service you nest
+  into an axum router (`nest_service("/mcp", service)`). 2026-07-28 clients are
+  served statelessly by default (no session ID, no GET stream);
+  `legacy_session_mode` controls older clients; `with_json_response(true)`
+  returns plain JSON for simple tools. The service factory runs per request, so
+  keep state in a shared handle. Source: README section "Stateless Streamable
+  HTTP". Confidence: primary.
+- Auth: the crate's `auth` feature is OAuth 2.1 for the client side (PKCE, PRM,
+  CIMD, DCR, scope upgrade, token refresh; `docs/OAUTH_SUPPORT.md`). Server-side
+  authentication is application code: axum middleware that validates the bearer
+  token (examples `simple_auth_streamhttp.rs`, `complex_auth_streamhttp.rs` with
+  protected-resource metadata and a `/oauth/register` endpoint, and
+  `cimd_auth_streamhttp.rs`). The HTTP request `Parts` are injected into the MCP
+  request extensions, so a middleware can attach an auth context that
+  `list_tools` and `call_tool` read per request. Sources:
+  <https://github.com/modelcontextprotocol/rust-sdk/tree/main/examples/servers/src>,
+  <https://github.com/modelcontextprotocol/rust-sdk/blob/main/crates/rmcp/src/transport/streamable_http_server/tower.rs>.
+  Confidence: primary.
+- Elicitation: server API `peer.elicit::<T>()` (feature `elicitation`) for
+  legacy-style calls, and `InputRequiredResult` for MRTR, with an HMAC
+  "request-state" codec (`seal_json`, `open_json`, feature `request-state`). The
+  SDK only forwards `input_required` to peers that negotiated 2026-07-28 or
+  newer; older peers get a protocol error. Source: README sections "Elicitation"
+  and "Multi-Round-Trip Requests". Confidence: primary.
 
-Implication for the design: `rmcp` is the right choice and covers the whole target surface, including per-token tool lists. Pin the exact version, wrap it behind a thin internal module (tool registry, auth context, approval flow), and budget for a breaking upgrade every few months. Write the OAuth authorization server (path 2 in 1c) yourself or use a separate component; the SDK does not give you one. Do not depend on in-process elicitation for older peers: it fails there.
+Implication for the design: `rmcp` is the right choice and covers the whole
+target surface, including per-token tool lists. Pin the exact version, wrap it
+behind a thin internal module (tool registry, auth context, approval flow), and
+budget for a breaking upgrade every few months. Write the OAuth authorization
+server (path 2 in 1c) yourself or use a separate component; the SDK does not
+give you one. Do not depend on in-process elicitation for older peers: it fails
+there.
 
 ## 3. Codex and ChatGPT plans
 
-- Anthropic wording (for comparison), confirmed: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." Source: https://code.claude.com/docs/en/agent-sdk/overview.md. Confidence: primary.
-- OpenAI has an equivalent statement plus a sanctioned path. In the Codex app-server docs: "App-server authentication has never been permitted for commercial or hosted services. We launched Sign in with ChatGPT to support these use cases." Local and open-source apps built on app-server auth may continue, with a recommendation to migrate to Sign in with ChatGPT (SIWC). The Codex Python SDK controls the local app-server over JSON-RPC (the TypeScript SDK was not checked). Sources: https://developers.openai.com/codex/app-server (section "Auth endpoints"), https://developers.openai.com/codex/sdk. Confidence: primary.
-- SIWC "ChatGPT plan usage" is documented for open-source and locally hosted apps: the user signs in through an OAuth flow, consents to plan usage, and the app calls the Responses API with the user's access token. "If you're interested in offering it in a paid or remotely hosted app, complete the interest form." It is a preview with limits: `store: false`, `stream: true`, no hosted MCP or connectors (Codex can still run local MCP tools), no Files API, no image generation or file search. UI rules require a visible "Using ChatGPT plan" indicator, a "Manage usage" link and a statement of which app plans support it. Sources: https://developers.openai.com/siwc/token-sharing-open-source, https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations, https://developers.openai.com/siwc/ui-ux-guidelines. Confidence: primary.
-- The consumer terms of use (effective 2026-01-01, rest-of-world version) forbid sharing "account credentials" or making an account "available to anyone else", and forbid to "automatically or programmatically extract data or Output". The Europe terms page blocked a plain fetch and was not read, so the EEA wording is unverified. Source: https://openai.com/policies/row-terms-of-use/. Confidence: primary for the ROW text, unverified for EEA.
-- Codex CLI and remote HTTP MCP with bearer tokens: yes (`bearer_token_env_var`, `http_headers`, `env_http_headers`, `http_headers_helper`; default `startup_timeout_sec` 10, `tool_timeout_sec` 60). Source: https://developers.openai.com/codex/mcp. Confidence: primary. Codex CLI 0.147.0 (2026-08-07) added opt-in support for MCP 2026-07-28: https://codex.danielvaughan.com/2026/08/07/mcp-2026-07-28-stateless-protocol-codex-cli-paginated-discovery-multi-round-requests-migration/. Confidence: secondary.
+- Anthropic wording (for comparison), confirmed: "Unless previously approved,
+  Anthropic does not allow third party developers to offer claude.ai login or
+  rate limits for their products, including agents built on the Claude Agent
+  SDK." Source: <https://code.claude.com/docs/en/agent-sdk/overview.md>.
+  Confidence: primary.
+- OpenAI has an equivalent statement plus a sanctioned path. In the Codex
+  app-server docs: "App-server authentication has never been permitted for
+  commercial or hosted services. We launched Sign in with ChatGPT to support
+  these use cases." Local and open-source apps built on app-server auth may
+  continue, with a recommendation to migrate to Sign in with ChatGPT (SIWC). The
+  Codex Python SDK controls the local app-server over JSON-RPC (the TypeScript
+  SDK was not checked). Sources:
+  <https://developers.openai.com/codex/app-server> (section "Auth endpoints"),
+  <https://developers.openai.com/codex/sdk>. Confidence: primary.
+- SIWC "ChatGPT plan usage" is documented for open-source and locally hosted
+  apps: the user signs in through an OAuth flow, consents to plan usage, and the
+  app calls the Responses API with the user's access token. "If you're
+  interested in offering it in a paid or remotely hosted app, complete the
+  interest form." It is a preview with limits: `store: false`, `stream: true`,
+  no hosted MCP or connectors (Codex can still run local MCP tools), no Files
+  API, no image generation or file search. UI rules require a visible "Using
+  ChatGPT plan" indicator, a "Manage usage" link and a statement of which app
+  plans support it. Sources:
+  <https://developers.openai.com/siwc/token-sharing-open-source>,
+  <https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations>,
+  <https://developers.openai.com/siwc/ui-ux-guidelines>. Confidence: primary.
+- The consumer terms of use (effective 2026-01-01, rest-of-world version) forbid
+  sharing "account credentials" or making an account "available to anyone else",
+  and forbid to "automatically or programmatically extract data or Output". The
+  Europe terms page blocked a plain fetch and was not read, so the EEA wording
+  is unverified. Source: <https://openai.com/policies/row-terms-of-use/>.
+  Confidence: primary for the ROW text, unverified for EEA.
+- Codex CLI and remote HTTP MCP with bearer tokens: yes (`bearer_token_env_var`,
+  `http_headers`, `env_http_headers`, `http_headers_helper`; default
+  `startup_timeout_sec` 10, `tool_timeout_sec` 60). Source:
+  <https://developers.openai.com/codex/mcp>. Confidence: primary. Codex CLI
+  0.147.0 (2026-08-07) added opt-in support for MCP 2026-07-28:
+  <https://codex.danielvaughan.com/2026/08/07/mcp-2026-07-28-stateless-protocol-codex-cli-paginated-discovery-multi-round-requests-migration/>.
+  Confidence: secondary.
 
-Implication for the design: the platform never needs a model login if the AI clients (Claude Code, Codex, Open WebUI) bring their own. Keep it that way. Any built-in generation feature must use an API key or a local model the operator configures. Never proxy a user's claude.ai or ChatGPT login through the platform. The only OpenAI-sanctioned login route for a self-hosted open-source tool is SIWC, and it is a preview that excludes hosted or commercial use.
+Implication for the design: the platform never needs a model login if the AI
+clients (Claude Code, Codex, Open WebUI) bring their own. Keep it that way. Any
+built-in generation feature must use an API key or a local model the operator
+configures. Never proxy a user's claude.ai or ChatGPT login through the
+platform. The only OpenAI-sanctioned login route for a self-hosted open-source
+tool is SIWC, and it is a preview that excludes hosted or commercial use.
 
 ## 4. Typst as a Rust library
 
-- Crates (all 0.15.1, 2026-07-17, Apache-2.0, MSRV 1.92): `typst`, `typst-pdf`, `typst-library`, `typst-kit`, `typst-assets`. Wrapper: `typst-as-lib` 0.17.0 (2026-10-07, MIT, targets `typst ^0.15`; its README says "This API is currently not really stable"). Sources: https://crates.io/crates/typst, https://crates.io/crates/typst-as-lib, https://github.com/Relacibo/typst-as-lib. Confidence: primary.
-- Embedding: implement the `World` trait (seven methods: `library`, `book`, `main`, `source`, `file`, `font`, `today`), call `typst::compile::<PagedDocument>(&world)` (returns `Warned<SourceResult<PagedDocument>>`), then `typst_pdf::pdf(&doc, &PdfOptions)` (returns `Vec<u8>`). Source code at tag v0.15.1: https://github.com/typst/typst/blob/v0.15.1/crates/typst-library/src/lib.rs, https://github.com/typst/typst/blob/v0.15.1/crates/typst/src/lib.rs, https://github.com/typst/typst/blob/v0.15.1/crates/typst-pdf/src/lib.rs. Confidence: primary.
-- API stability: no promise. Crate versions track the compiler (0.14.0 on 2025-10-24, 0.15.0 on 2026-06-15, 0.15.1 on 2026-07-17), and the 0.15.0 release notes say `typst-kit` "was completely reworked to make it easier to create a Typst `World` implementation". Source: https://github.com/typst/typst/releases/tag/v0.15.0. Confidence: primary for the facts, the "no promise" reading is unverified.
-- Fonts: the World supplies them. `typst-kit` (all features off by default) has `embedded-fonts` (from `typst-assets`), `scan-fonts` and `system-files`. For stable output bundle fonts yourself and avoid system scanning. Source: https://github.com/typst/typst/blob/v0.15.1/crates/typst-kit/src/lib.rs. Confidence: primary. The exact default font list in `typst-assets` was not verified.
-- Reproducibility knobs: `PdfOptions` has `timestamp: Option<Timestamp>` (used only if the document's `date` is auto), `ident: Smart<String>` (stable document ID; `Auto` hashes title and author), `creator` (default "Typst $version"), `standards`, `tagged`, `pretty`. The CLI maps `SOURCE_DATE_EPOCH` or `--creation-timestamp` into `timestamp`. `World::today()` returns `None` or a fixed date to avoid `datetime.today()` drift. Sources: typst-pdf `lib.rs` above, https://github.com/typst/typst/blob/v0.15.1/crates/typst-cli/src/args.rs. Confidence: primary for the knobs; byte-identical output across runs and machines was not tested here and no official guarantee was found: unverified.
-- Features to keep off: `universe-packages` and `system-downloader` (network), `system-files`, `scan-fonts`. Untrusted Typst source can only reach what the `World` serves, so serve a whitelist. Confidence: unverified (design reasoning from the `World` contract).
+- Crates (all 0.15.1, 2026-07-17, Apache-2.0, MSRV 1.92): `typst`, `typst-pdf`,
+  `typst-library`, `typst-kit`, `typst-assets`. Wrapper: `typst-as-lib` 0.17.0
+  (2026-10-07, MIT, targets `typst ^0.15`; its README says "This API is
+  currently not really stable"). Sources: <https://crates.io/crates/typst>,
+  <https://crates.io/crates/typst-as-lib>,
+  <https://github.com/Relacibo/typst-as-lib>. Confidence: primary.
+- Embedding: implement the `World` trait (seven methods: `library`, `book`,
+  `main`, `source`, `file`, `font`, `today`), call
+  `typst::compile::<PagedDocument>(&world)` (returns
+  `Warned<SourceResult<PagedDocument>>`), then
+  `typst_pdf::pdf(&doc, &PdfOptions)` (returns `Vec<u8>`). Source code at tag
+  v0.15.1:
+  <https://github.com/typst/typst/blob/v0.15.1/crates/typst-library/src/lib.rs>,
+  <https://github.com/typst/typst/blob/v0.15.1/crates/typst/src/lib.rs>,
+  <https://github.com/typst/typst/blob/v0.15.1/crates/typst-pdf/src/lib.rs>.
+  Confidence: primary.
+- API stability: no promise. Crate versions track the compiler (0.14.0 on
+  2025-10-24, 0.15.0 on 2026-06-15, 0.15.1 on 2026-07-17), and the 0.15.0
+  release notes say `typst-kit` "was completely reworked to make it easier to
+  create a Typst `World` implementation". Source:
+  <https://github.com/typst/typst/releases/tag/v0.15.0>. Confidence: primary for
+  the facts, the "no promise" reading is unverified.
+- Fonts: the World supplies them. `typst-kit` (all features off by default) has
+  `embedded-fonts` (from `typst-assets`), `scan-fonts` and `system-files`. For
+  stable output bundle fonts yourself and avoid system scanning. Source:
+  <https://github.com/typst/typst/blob/v0.15.1/crates/typst-kit/src/lib.rs>.
+  Confidence: primary. The exact default font list in `typst-assets` was not
+  verified.
+- Reproducibility knobs: `PdfOptions` has `timestamp: Option<Timestamp>` (used
+  only if the document's `date` is auto), `ident: Smart<String>` (stable
+  document ID; `Auto` hashes title and author), `creator` (default "Typst
+  $version"), `standards`, `tagged`, `pretty`. The CLI maps `SOURCE_DATE_EPOCH`
+  or `--creation-timestamp` into `timestamp`. `World::today()` returns `None` or
+  a fixed date to avoid `datetime.today()` drift. Sources: typst-pdf `lib.rs`
+  above,
+  <https://github.com/typst/typst/blob/v0.15.1/crates/typst-cli/src/args.rs>.
+  Confidence: primary for the knobs; byte-identical output across runs and
+  machines was not tested here and no official guarantee was found: unverified.
+- Features to keep off: `universe-packages` and `system-downloader` (network),
+  `system-files`, `scan-fonts`. Untrusted Typst source can only reach what the
+  `World` serves, so serve a whitelist. Confidence: unverified (design reasoning
+  from the `World` contract).
 
-Implication for the design: embed Typst behind one `PdfRenderer` module with an own `World` (bundled fonts, in-memory virtual files, whitelist, fixed `today`). Pin `typst` and `typst-pdf` to the same minor version and upgrade deliberately, with a golden-file test that renders a fixed worksheet. Use `typst-as-lib` only if you accept its churn. Treat "same inputs, same Typst version, same fonts, fixed timestamp and ident" as the reproducibility contract and key caches on the hash of source plus inputs plus Typst version, not on the PDF bytes.
+Implication for the design: embed Typst behind one `PdfRenderer` module with an
+own `World` (bundled fonts, in-memory virtual files, whitelist, fixed `today`).
+Pin `typst` and `typst-pdf` to the same minor version and upgrade deliberately,
+with a golden-file test that renders a fixed worksheet. Use `typst-as-lib` only
+if you accept its churn. Treat "same inputs, same Typst version, same fonts,
+fixed timestamp and ident" as the reproducibility contract and key caches on the
+hash of source plus inputs plus Typst version, not on the PDF bytes.
 
 ## 5. docling-serve
 
-- Versions and license: docling-serve v1.38.2 (2026-10-27), docling v2.145.0 (2026-10-29), both MIT. Stable `/v1` API (the earlier `/v1alpha` was renamed). Sources: https://github.com/docling-project/docling-serve, https://github.com/docling-project/docling. Confidence: primary.
-- API shape: `POST /v1/convert/source` (JSON; sources of kind `http` or base64 `file`), `POST /v1/convert/file` (multipart), async variants `/v1/convert/source/async` and `/v1/convert/file/async`, `GET /v1/status/poll/{task_id}`, `GET /v1/result/{task_id}`, WebSocket `/v1/status/ws/{task_id}`, `GET /v1/capabilities`. Optional API key via `DOCLING_SERVE_API_KEY` (header `X-Api-Key`). Synchronous calls wait at most 120 seconds by default (`DOCLING_SERVE_MAX_SYNC_WAIT`). Output formats include `md`, `json`, `html`, `text`, `doctags`, `chunks` and `latex`. Sources: https://github.com/docling-project/docling-serve/blob/main/docs/usage.md, https://github.com/docling-project/docling-serve/blob/main/docs/configuration.md. Confidence: primary.
-- Images (README table): `docling-serve-cpu` 4.4 GB (amd64 and arm64), base image 8.7 GB (amd64) or 4.4 GB (arm64), `-cu128` 11.4 GB, `-cu130` size TBD. Registries: `quay.io` and `ghcr.io`. The image bakes in the layout, TableFormer, picture classifier, RapidOCR and EasyOCR models. Sources: https://github.com/docling-project/docling-serve/blob/main/README.md, https://github.com/docling-project/docling-serve/blob/main/Containerfile. Confidence: primary.
-- Speed (Docling GPU guide, standard pipeline without OCR, PDF set): RTX 5090 7.9 pages/s versus 1.5 pages/s CPU-only (16 PyTorch threads, Ryzen 7 9800); RTX 5070 4.2 versus 1.2; AWS g6e.2xlarge (L40S) 3.1. With OCR on an image set: 1.6 pages/s (5090) and 1.1 (5070). So CPU-only is about 1 to 1.5 pages per second on a 16-thread desktop CPU, and a GPU gives roughly 3 to 5 times that. Source: https://docling-project.github.io/docling/usage/gpu/. Confidence: primary. Speed on a small VPS with 2 to 4 cores: unverified, expect slower.
-- Formula recognition: `do_formula_enrichment` (default false) runs the `CodeFormula` model and returns LaTeX for formulas the layout model detects; crops use an 18 percent margin. Source: https://github.com/docling-project/docling/blob/main/docs/usage/enrichments.md. Confidence: primary. Accuracy on German school math and handwriting: unverified.
-- OCR engines: RapidOCR, Nemotron-OCR, EasyOCR, ocrmac, Tesseract CLI, tesserocr. `ocr_lang` takes BCP-47 tags (`de`, `de-DE`) or engine-native codes (`deu`); `ocr_engine` is deprecated in favor of `ocr_preset`. Source: https://github.com/docling-project/docling/blob/main/docs/concepts/OCR.md, https://github.com/docling-project/docling-serve/blob/main/docs/usage.md. Confidence: primary.
-- German: the image installs Tesseract with only `tesseract-langpack-eng` and `tesseract-osd` (file `os-packages.txt`), so Tesseract `deu` needs a custom image. EasyOCR works for German through its Latin model, and Docling's EasyOCR download list includes `latin_g2`, so German OCR likely works out of the box. Sources: https://github.com/docling-project/docling-serve/blob/main/os-packages.txt, https://github.com/docling-project/docling/blob/main/docling/models/stages/ocr/easyocr_model.py. Confidence: secondary (inferred from source, not run). Born-digital PDFs do not need OCR.
+- Versions and license: docling-serve v1.38.2 (2026-10-27), docling v2.145.0
+  (2026-10-29), both MIT. Stable `/v1` API (the earlier `/v1alpha` was renamed).
+  Sources: <https://github.com/docling-project/docling-serve>,
+  <https://github.com/docling-project/docling>. Confidence: primary.
+- API shape: `POST /v1/convert/source` (JSON; sources of kind `http` or base64
+  `file`), `POST /v1/convert/file` (multipart), async variants
+  `/v1/convert/source/async` and `/v1/convert/file/async`,
+  `GET /v1/status/poll/{task_id}`, `GET /v1/result/{task_id}`, WebSocket
+  `/v1/status/ws/{task_id}`, `GET /v1/capabilities`. Optional API key via
+  `DOCLING_SERVE_API_KEY` (header `X-Api-Key`). Synchronous calls wait at most
+  120 seconds by default (`DOCLING_SERVE_MAX_SYNC_WAIT`). Output formats include
+  `md`, `json`, `html`, `text`, `doctags`, `chunks` and `latex`. Sources:
+  <https://github.com/docling-project/docling-serve/blob/main/docs/usage.md>,
+  <https://github.com/docling-project/docling-serve/blob/main/docs/configuration.md>.
+  Confidence: primary.
+- Images (README table): `docling-serve-cpu` 4.4 GB (amd64 and arm64), base
+  image 8.7 GB (amd64) or 4.4 GB (arm64), `-cu128` 11.4 GB, `-cu130` size TBD.
+  Registries: `quay.io` and `ghcr.io`. The image bakes in the layout,
+  TableFormer, picture classifier, RapidOCR and EasyOCR models. Sources:
+  <https://github.com/docling-project/docling-serve/blob/main/README.md>,
+  <https://github.com/docling-project/docling-serve/blob/main/Containerfile>.
+  Confidence: primary.
+- Speed (Docling GPU guide, standard pipeline without OCR, PDF set): RTX 5090
+  7.9 pages/s versus 1.5 pages/s CPU-only (16 PyTorch threads, Ryzen 7 9800);
+  RTX 5070 4.2 versus 1.2; AWS g6e.2xlarge (L40S) 3.1. With OCR on an image set:
+  1.6 pages/s (5090) and 1.1 (5070). So CPU-only is about 1 to 1.5 pages per
+  second on a 16-thread desktop CPU, and a GPU gives roughly 3 to 5 times that.
+  Source: <https://docling-project.github.io/docling/usage/gpu/>. Confidence:
+  primary. Speed on a small VPS with 2 to 4 cores: unverified, expect slower.
+- Formula recognition: `do_formula_enrichment` (default false) runs the
+  `CodeFormula` model and returns LaTeX for formulas the layout model detects;
+  crops use an 18 percent margin. Source:
+  <https://github.com/docling-project/docling/blob/main/docs/usage/enrichments.md>.
+  Confidence: primary. Accuracy on German school math and handwriting:
+  unverified.
+- OCR engines: RapidOCR, Nemotron-OCR, EasyOCR, ocrmac, Tesseract CLI,
+  tesserocr. `ocr_lang` takes BCP-47 tags (`de`, `de-DE`) or engine-native codes
+  (`deu`); `ocr_engine` is deprecated in favor of `ocr_preset`. Source:
+  <https://github.com/docling-project/docling/blob/main/docs/concepts/OCR.md>,
+  <https://github.com/docling-project/docling-serve/blob/main/docs/usage.md>.
+  Confidence: primary.
+- German: the image installs Tesseract with only `tesseract-langpack-eng` and
+  `tesseract-osd` (file `os-packages.txt`), so Tesseract `deu` needs a custom
+  image. EasyOCR works for German through its Latin model, and Docling's EasyOCR
+  download list includes `latin_g2`, so German OCR likely works out of the box.
+  Sources:
+  <https://github.com/docling-project/docling-serve/blob/main/os-packages.txt>,
+  <https://github.com/docling-project/docling/blob/main/docling/models/stages/ocr/easyocr_model.py>.
+  Confidence: secondary (inferred from source, not run). Born-digital PDFs do
+  not need OCR.
 
-Implication for the design: treat docling-serve as an optional, asynchronous worker: always use the async endpoints and poll, set `ocr_lang=["de","en"]`, and turn on `do_formula_enrichment` only on request. Document the 4.4 GB CPU image and the 1 to 1.5 pages per second figure so operators can size it. Put a boundary trait around it (`DocumentExtractor`) so the output (Markdown or JSON with LaTeX formulas) can be reviewed by a human before it enters the task bank.
+Implication for the design: treat docling-serve as an optional, asynchronous
+worker: always use the async endpoints and poll, set `ocr_lang=["de","en"]`, and
+turn on `do_formula_enrichment` only on request. Document the 4.4 GB CPU image
+and the 1 to 1.5 pages per second figure so operators can size it. Put a
+boundary trait around it (`DocumentExtractor`) so the output (Markdown or JSON
+with LaTeX formulas) can be reviewed by a human before it enters the task bank.
 
 ## 6. Embeddings in Rust
 
-- `fastembed` 7.5.0 (2026-10-23), Apache-2.0, MSRV 1.88. It uses `ort` through an exact pin (`=2.0.0-rc.15`), the Hugging Face `tokenizers` crate, and a synchronous API (no Tokio). Candle backends exist behind feature flags for newer models (Qwen3, nomic v2 MoE). Local model files load through `try_new_from_user_defined`; models download on first use and load from cache afterwards. Sources: https://crates.io/crates/fastembed, https://github.com/Anush008/fastembed-rs. Confidence: primary.
-- `ort` is still a release candidate: 2.0.0-rc.15 (2026-10-19), MIT or Apache-2.0, MSRV 1.92. Its docs recommend the `load-dynamic` feature (load ONNX Runtime at run time) over compile-time dynamic linking, and static linking where the execution provider supports it. Sources: https://crates.io/crates/ort, https://ort.pyke.io/setup/linking. Confidence: primary.
+- `fastembed` 7.5.0 (2026-10-23), Apache-2.0, MSRV 1.88. It uses `ort` through
+  an exact pin (`=2.0.0-rc.15`), the Hugging Face `tokenizers` crate, and a
+  synchronous API (no Tokio). Candle backends exist behind feature flags for
+  newer models (Qwen3, nomic v2 MoE). Local model files load through
+  `try_new_from_user_defined`; models download on first use and load from cache
+  afterwards. Sources: <https://crates.io/crates/fastembed>,
+  <https://github.com/Anush008/fastembed-rs>. Confidence: primary.
+- `ort` is still a release candidate: 2.0.0-rc.15 (2026-10-19), MIT or
+  Apache-2.0, MSRV 1.92. Its docs recommend the `load-dynamic` feature (load
+  ONNX Runtime at run time) over compile-time dynamic linking, and static
+  linking where the execution provider supports it. Sources:
+  <https://crates.io/crates/ort>, <https://ort.pyke.io/setup/linking>.
+  Confidence: primary.
 
-| Model | Dimensions | Parameters | ONNX file | Notes |
-| --- | --- | --- | --- | --- |
-| `intfloat/multilingual-e5-small` | 384 | 117.7M | 470 MB fp32 (235 MB O4, 118 MB int8 in the HF repo) | MIT, 512-token limit, German among evaluated languages |
-| `intfloat/multilingual-e5-base` | 768 | 278M | 1.1 GB | MIT |
-| `intfloat/multilingual-e5-large` | 1024 | about 560M | via `Qdrant/multilingual-e5-large-onnx` | MIT |
-| `BAAI/bge-m3` | 1024 | XLM-RoBERTa-large class | about 2.3 GB | MIT, 8,192-token context, 100+ languages; dense, sparse and ColBERT in one pass (`Bgem3Embedding`) |
-| `paraphrase-multilingual-mpnet-base-v2` | 768 | 278M | n/a | Apache-2.0 |
+| Model                                   | Dimensions | Parameters              | ONNX file                                           | Notes                                                                                              |
+| --------------------------------------- | ---------- | ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `intfloat/multilingual-e5-small`        | 384        | 117.7M                  | 470 MB fp32 (235 MB O4, 118 MB int8 in the HF repo) | MIT, 512-token limit, German among evaluated languages                                             |
+| `intfloat/multilingual-e5-base`         | 768        | 278M                    | 1.1 GB                                              | MIT                                                                                                |
+| `intfloat/multilingual-e5-large`        | 1024       | about 560M              | via `Qdrant/multilingual-e5-large-onnx`             | MIT                                                                                                |
+| `BAAI/bge-m3`                           | 1024       | XLM-RoBERTa-large class | about 2.3 GB                                        | MIT, 8,192-token context, 100+ languages; dense, sparse and ColBERT in one pass (`Bgem3Embedding`) |
+| `paraphrase-multilingual-mpnet-base-v2` | 768        | 278M                    | n/a                                                 | Apache-2.0                                                                                         |
 
-Sources for the table: https://github.com/Anush008/fastembed-rs/blob/main/src/models/text_embedding.rs (dimensions), https://huggingface.co/api/models/intfloat/multilingual-e5-small and the same API for the other models (parameters, license, file sizes), https://huggingface.co/intfloat/multilingual-e5-small (German listed, prefixes, 512 tokens), https://huggingface.co/BAAI/bge-m3 (8,192 tokens). Confidence: primary. The "about 560M" and "XLM-RoBERTa-large class" entries are unverified.
+Sources for the table:
+<https://github.com/Anush008/fastembed-rs/blob/main/src/models/text_embedding.rs>
+(dimensions), <https://huggingface.co/api/models/intfloat/multilingual-e5-small>
+and the same API for the other models (parameters, license, file sizes),
+<https://huggingface.co/intfloat/multilingual-e5-small> (German listed,
+prefixes, 512 tokens), <https://huggingface.co/BAAI/bge-m3> (8,192 tokens).
+Confidence: primary. The "about 560M" and "XLM-RoBERTa-large class" entries are
+unverified.
 
-- E5 needs `"query: "` and `"passage: "` prefixes, "otherwise you will see a performance degradation". fastembed does not add them; its README example adds them by hand. Sources: https://huggingface.co/intfloat/multilingual-e5-small, https://github.com/Anush008/fastembed-rs/blob/main/README.md. Confidence: primary.
-- Speed: no primary CPU benchmark for these models was found. One reference point is a fastembed benchmark with `all-MiniLM-L6-v2` (22M parameters, 6 layers) on an Apple M4 Max: 1.7 ms for a single short text, 2,849 short texts per second at batch size 32. Source: https://github.com/jerrythomas/rust-embedding-bench. Confidence: secondary. From architecture alone, e5-small (12 layers, hidden size 384) costs about 2x that per token, and a bge-m3 class model (24 layers, hidden size 1024) about 14x e5-small. Confidence: unverified (estimate). Practical guess: hundreds of short passages per second for e5-small on a few server cores, a few tens per second for bge-m3.
+- E5 needs `"query: "` and `"passage: "` prefixes, "otherwise you will see a
+  performance degradation". fastembed does not add them; its README example adds
+  them by hand. Sources:
+  <https://huggingface.co/intfloat/multilingual-e5-small>,
+  <https://github.com/Anush008/fastembed-rs/blob/main/README.md>. Confidence:
+  primary.
+- Speed: no primary CPU benchmark for these models was found. One reference
+  point is a fastembed benchmark with `all-MiniLM-L6-v2` (22M parameters, 6
+  layers) on an Apple M4 Max: 1.7 ms for a single short text, 2,849 short texts
+  per second at batch size 32. Source:
+  <https://github.com/jerrythomas/rust-embedding-bench>. Confidence: secondary.
+  From architecture alone, e5-small (12 layers, hidden size 384) costs about 2x
+  that per token, and a bge-m3 class model (24 layers, hidden size 1024) about
+  14x e5-small. Confidence: unverified (estimate). Practical guess: hundreds of
+  short passages per second for e5-small on a few server cores, a few tens per
+  second for bge-m3.
 
-Implication for the design: default to `multilingual-e5-small` (384 dimensions, MIT, German evaluated, CPU-friendly) and make the model a configuration value. Store the model ID and dimension with every vector, and plan for a re-embed job when the model changes. Add the E5 prefixes in one place. Offer bge-m3 as an opt-in "quality" model; it needs about 2.3 GB for the ONNX file and much more CPU time. Verify retrieval quality on a small German school-math evaluation set before fixing the default. Build with `load-dynamic` or a static ONNX Runtime and pin `ort` to the version fastembed requires.
+Implication for the design: default to `multilingual-e5-small` (384 dimensions,
+MIT, German evaluated, CPU-friendly) and make the model a configuration value.
+Store the model ID and dimension with every vector, and plan for a re-embed job
+when the model changes. Add the E5 prefixes in one place. Offer bge-m3 as an
+opt-in "quality" model; it needs about 2.3 GB for the ONNX file and much more
+CPU time. Verify retrieval quality on a small German school-math evaluation set
+before fixing the default. Build with `load-dynamic` or a static ONNX Runtime
+and pin `ort` to the version fastembed requires.
 
 ## 7. School math in Rust
 
-- Exact rationals: `num-rational` 0.4.2 (2025-01-25, MIT or Apache-2.0) with `num-bigint` 0.5.1 (2026-07-05); `fraction` 0.17.0 (2026-08-22, MIT or Apache-2.0). Heavier options are copyleft: `malachite` 0.14.0 is LGPL-3.0-only and `rug` 1.30.0 is LGPL-3.0+ (GMP based). `feanor-math` 3.6.1 is MIT (number theory). Source: crates.io pages for each crate. Confidence: primary.
-- Expression parsing and evaluation: `exmex` 0.21.0 (2026-05-23, MIT or Apache-2.0); `evalexpr` 13.1.0 is **AGPL-3.0-only** since 12.0.0 (2024-10-17; 11.3.1 was MIT); `fasteval` 0.2.4 (2020) and `meval` 0.2.0 (2018) are unmaintained; `fend-core` 1.5.9 (2026-10-21, MIT, arbitrary-precision unit-aware calculator); `cas-compute` 0.2.0 (MIT, repo says "very early stage"); `mathcore` 0.3.1 (MIT, about 3,900 downloads); `egg` 0.11.0 (MIT, e-graph rewriting). Sources: crates.io pages, https://github.com/ISibboI/evalexpr (README states AGPL3), https://github.com/ElectrifyPro/cas-rs. Confidence: primary.
-- Symbolica 3.0.1 (2026-09-29) is under the "Symbolica Source-Available License 1.0", not an open-source license. It allows linking, embedding and distributing an unmodified copy as a Cargo dependency, but "Distribution under this Section does not grant or transfer runtime rights": each recipient needs free-use terms, a paid runtime license or a written agreement. Free tier: one core and one instance per device for academic or non-commercial use; hobbyist for non-employed users; startups by agreement; Standard EUR 3,000 per year per interactive developer machine, "Server or CI use requires a separate quote". Section 4 also bars using Symbolica as a reference, oracle or test input for a competing CAS. Sources: https://github.com/symbolica-dev/symbolica/blob/master/License.md, https://symbolica.io/license/. Confidence: primary.
-- No mature permissive Rust CAS exists. Equivalence checking is therefore custom work. Options (design reasoning, unverified): (1) polynomial or rational-function normal form over `BigRational` for algebra; (2) randomized evaluation at exact rational points (Schwartz-Zippel style) for everything else, with a tolerance only for transcendental functions; (3) an optional SymPy sidecar container as a pluggable checker.
+- Exact rationals: `num-rational` 0.4.2 (2025-01-25, MIT or Apache-2.0) with
+  `num-bigint` 0.5.1 (2026-07-05); `fraction` 0.17.0 (2026-08-22, MIT or
+  Apache-2.0). Heavier options are copyleft: `malachite` 0.14.0 is LGPL-3.0-only
+  and `rug` 1.30.0 is LGPL-3.0+ (GMP based). `feanor-math` 3.6.1 is MIT (number
+  theory). Source: crates.io pages for each crate. Confidence: primary.
+- Expression parsing and evaluation: `exmex` 0.21.0 (2026-05-23, MIT or
+  Apache-2.0); `evalexpr` 13.1.0 is **AGPL-3.0-only** since 12.0.0 (2024-10-17;
+  11.3.1 was MIT); `fasteval` 0.2.4 (2020) and `meval` 0.2.0 (2018) are
+  unmaintained; `fend-core` 1.5.9 (2026-10-21, MIT, arbitrary-precision
+  unit-aware calculator); `cas-compute` 0.2.0 (MIT, repo says "very early
+  stage"); `mathcore` 0.3.1 (MIT, about 3,900 downloads); `egg` 0.11.0 (MIT,
+  e-graph rewriting). Sources: crates.io pages,
+  <https://github.com/ISibboI/evalexpr> (README states AGPL3),
+  <https://github.com/ElectrifyPro/cas-rs>. Confidence: primary.
+- Symbolica 3.0.1 (2026-09-29) is under the "Symbolica Source-Available License
+  1.0", not an open-source license. It allows linking, embedding and
+  distributing an unmodified copy as a Cargo dependency, but "Distribution under
+  this Section does not grant or transfer runtime rights": each recipient needs
+  free-use terms, a paid runtime license or a written agreement. Free tier: one
+  core and one instance per device for academic or non-commercial use; hobbyist
+  for non-employed users; startups by agreement; Standard EUR 3,000 per year per
+  interactive developer machine, "Server or CI use requires a separate quote".
+  Section 4 also bars using Symbolica as a reference, oracle or test input for a
+  competing CAS. Sources:
+  <https://github.com/symbolica-dev/symbolica/blob/master/License.md>,
+  <https://symbolica.io/license/>. Confidence: primary.
+- No mature permissive Rust CAS exists. Equivalence checking is therefore custom
+  work. Options (design reasoning, unverified): (1) polynomial or
+  rational-function normal form over `BigRational` for algebra; (2) randomized
+  evaluation at exact rational points (Schwartz-Zippel style) for everything
+  else, with a tolerance only for transcendental functions; (3) an optional
+  SymPy sidecar container as a pluggable checker.
 
-Implication for the design: build the answer checkers on `num-rational`, `num-bigint` and your own small parser (or `exmex` for evaluation only), keep the checker interface pluggable (`exact`, `numeric`, `sympy`), and exclude Symbolica, `evalexpr` and the LGPL bignum crates from the dependency tree (add `cargo deny` to CI). Self-hosters include schools and companies, and the Symbolica terms would push a license purchase onto them.
+Implication for the design: build the answer checkers on `num-rational`,
+`num-bigint` and your own small parser (or `exmex` for evaluation only), keep
+the checker interface pluggable (`exact`, `numeric`, `sympy`), and exclude
+Symbolica, `evalexpr` and the LGPL bignum crates from the dependency tree (add
+`cargo deny` to CI). Self-hosters include schools and companies, and the
+Symbolica terms would push a license purchase onto them.
 
 ## 8. i18n in Rust
 
-- Fluent: `fluent-bundle` 0.16.0 (2025-05-22), `fluent` 0.17.0, `fluent-syntax` 0.12.0, `fluent-langneg` 0.14.2, `unic-langid` 0.9.6, all dual MIT or Apache-2.0 and widely used (22 million downloads for `fluent-bundle`). No release since May 2025; the 0.15.3 release (2024-03-16) is described as "a 'safe harbor' release prior to bringing on non-Mozilla community maintainers". Sources: crates.io pages, https://github.com/projectfluent/fluent-rs/blob/main/fluent-bundle/CHANGELOG.md. Confidence: primary.
-- Runtime loading: you parse `.ftl` text at run time (`FluentResource::try_new`, `FluentBundle::add_resource`); `fluent_bundle::concurrent::FluentBundle` is the thread-safe variant. `fluent-templates` 0.15.1 (2026-08-05) offers `ArcLoader` (run-time, from a directory) and `static_loader!` (compile time). Sources: https://github.com/projectfluent/fluent-rs/blob/main/fluent-bundle/src/lib.rs, https://github.com/XAMPPRocky/fluent-templates/blob/master/README.md. Confidence: primary.
-- Plurals: `fluent-bundle` depends on `intl_pluralrules` 7.0.2, last published 2022-10-19, whose generator README says "based on CLDR 33". Languages or rules added to CLDR after 2018 may be missing. Source: https://github.com/zbraniecki/pluralrules. Confidence: secondary (the effect on a specific new language is unverified).
-- `rust-i18n` 4.2.4 (2026-09-29, MIT): translations are embedded at compile time by default (`i18n!`), the optional `load-path` feature loads locale files at run time (`try_load_locales`), and a custom `Backend` trait is supported. The README documents no plural or gender mechanism. Source: https://github.com/longbridgeapp/rust-i18n/blob/main/README.md. Confidence: primary.
-- ICU4X: `icu` 2.4.0 (2026-10-22, Unicode-3.0) provides locale data and formatting (plurals, dates, numbers, collation). Data can be loaded at run time from a postcard blob (`icu_provider_blob`, built with `icu4x-datagen`), so formatting for a new locale needs no rebuild. It is not a message catalog, and no MessageFormat 2 crate (`icu_message_format`) exists on crates.io. Sources: https://github.com/unicode-org/icu4x/blob/main/provider/blob/README.md, https://crates.io/crates/icu. Confidence: primary.
+- Fluent: `fluent-bundle` 0.16.0 (2025-05-22), `fluent` 0.17.0, `fluent-syntax`
+  0.12.0, `fluent-langneg` 0.14.2, `unic-langid` 0.9.6, all dual MIT or
+  Apache-2.0 and widely used (22 million downloads for `fluent-bundle`). No
+  release since May 2025; the 0.15.3 release (2024-03-16) is described as "a
+  'safe harbor' release prior to bringing on non-Mozilla community maintainers".
+  Sources: crates.io pages,
+  <https://github.com/projectfluent/fluent-rs/blob/main/fluent-bundle/CHANGELOG.md>.
+  Confidence: primary.
+- Runtime loading: you parse `.ftl` text at run time (`FluentResource::try_new`,
+  `FluentBundle::add_resource`); `fluent_bundle::concurrent::FluentBundle` is
+  the thread-safe variant. `fluent-templates` 0.15.1 (2026-08-05) offers
+  `ArcLoader` (run-time, from a directory) and `static_loader!` (compile time).
+  Sources:
+  <https://github.com/projectfluent/fluent-rs/blob/main/fluent-bundle/src/lib.rs>,
+  <https://github.com/XAMPPRocky/fluent-templates/blob/master/README.md>.
+  Confidence: primary.
+- Plurals: `fluent-bundle` depends on `intl_pluralrules` 7.0.2, last published
+  2022-10-19, whose generator README says "based on CLDR 33". Languages or rules
+  added to CLDR after 2018 may be missing. Source:
+  <https://github.com/zbraniecki/pluralrules>. Confidence: secondary (the effect
+  on a specific new language is unverified).
+- `rust-i18n` 4.2.4 (2026-09-29, MIT): translations are embedded at compile time
+  by default (`i18n!`), the optional `load-path` feature loads locale files at
+  run time (`try_load_locales`), and a custom `Backend` trait is supported. The
+  README documents no plural or gender mechanism. Source:
+  <https://github.com/longbridgeapp/rust-i18n/blob/main/README.md>. Confidence:
+  primary.
+- ICU4X: `icu` 2.4.0 (2026-10-22, Unicode-3.0) provides locale data and
+  formatting (plurals, dates, numbers, collation). Data can be loaded at run
+  time from a postcard blob (`icu_provider_blob`, built with `icu4x-datagen`),
+  so formatting for a new locale needs no rebuild. It is not a message catalog,
+  and no MessageFormat 2 crate (`icu_message_format`) exists on crates.io.
+  Sources:
+  <https://github.com/unicode-org/icu4x/blob/main/provider/blob/README.md>,
+  <https://crates.io/crates/icu>. Confidence: primary.
 
-Implication for the design: use Fluent for messages (`.ftl` files in a `locales/<tag>/` directory, loaded at startup, no rebuild for a new language) and keep every user-visible string, including task-bank labels, out of Rust code. Format numbers and dates through ICU4X with a run-time blob or through a thin wrapper, so locale-specific formatting does not hide in code. Plan a plural fallback for new languages (a per-locale override file) because `intl_pluralrules` is stale. Add a small locale manifest (tag, display name, direction) and a CI check that every language has all message IDs.
+Implication for the design: use Fluent for messages (`.ftl` files in a
+`locales/<tag>/` directory, loaded at startup, no rebuild for a new language)
+and keep every user-visible string, including task-bank labels, out of Rust
+code. Format numbers and dates through ICU4X with a run-time blob or through a
+thin wrapper, so locale-specific formatting does not hide in code. Plan a plural
+fallback for new languages (a per-locale override file) because
+`intl_pluralrules` is stale. Add a small locale manifest (tag, display name,
+direction) and a CI check that every language has all message IDs.
 
 ## 9. Postgres side
 
-- pgvector 0.8.7 (2026-10-01) is the current release. 0.9.0 is unreleased in the changelog (async I/O for HNSW, drops Postgres 13 and 14). The README says "supports Postgres 13+". Docker Hub has `pgvector/pgvector:0.8.7-pg18-trixie` and tags for pg13 to pg17. Sources: https://github.com/pgvector/pgvector/blob/master/CHANGELOG.md, https://hub.docker.com/r/pgvector/pgvector/tags. Confidence: primary.
-- HNSW: `vector` indexes up to 2,000 dimensions, `halfvec` up to 4,000, so 384 and 1024 both fit. Defaults: `m = 16`, `ef_construction = 64`, `hnsw.ef_search = 40`. Filters apply after the index scan, so a restrictive filter can return too few rows; since 0.8.0 `SET hnsw.iterative_scan = strict_order` (or `relaxed_order`) fixes this, or use partial indexes. Source: https://github.com/pgvector/pgvector/blob/master/README.md. Confidence: primary.
-- Bug history: 0.8.2 fixed a buffer overflow in parallel HNSW builds, 0.8.3 possible index corruption with HNSW vacuuming, 0.8.4 an "hnsw graph not repaired" error. Source: CHANGELOG above. Confidence: primary.
-- PostgreSQL: current major is 18 (18.6, first released 2025-09-25, supported until 2030-11-14). Version 14 reaches end of life on 2026-11-12. No PostgreSQL 19 is listed on 2026-10-29. Source: https://www.postgresql.org/support/versioning/. Confidence: primary.
-- German full-text search: PostgreSQL ships a Snowball `german` stemmer and `german.stop` list in its source tree (`src/backend/snowball`, REL_18_STABLE), which initdb turns into the `german` text search configuration. Snowball does not split compounds. Compound splitting needs an ispell or Hunspell dictionary with `compoundwords controlled`, which is an operator-installed dictionary. Sources: https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/snowball/Makefile, https://www.postgresql.org/docs/18/textsearch-dictionaries.html. Confidence: primary for the stemmer and compound mechanism, secondary for the exact config name that initdb creates.
-- Rust drivers: `sqlx` 0.9.0 (2026-05-21) and `pgvector` 0.4.2 (2026-05-22, MIT or Apache-2.0). The crate's `sqlx` feature supports `sqlx >=0.8, <0.10`; 0.4.2 added SQLx 0.9. Types: `Vector`, `HalfVector`, `SparseVector`. Sources: https://crates.io/crates/pgvector, https://github.com/pgvector/pgvector-rust/blob/master/CHANGELOG.md. Confidence: primary. Whether `sqlx::query!` macros need type overrides for `vector` columns: unverified.
+- pgvector 0.8.7 (2026-10-01) is the current release. 0.9.0 is unreleased in the
+  changelog (async I/O for HNSW, drops Postgres 13 and 14). The README says
+  "supports Postgres 13+". Docker Hub has `pgvector/pgvector:0.8.7-pg18-trixie`
+  and tags for pg13 to pg17. Sources:
+  <https://github.com/pgvector/pgvector/blob/master/CHANGELOG.md>,
+  <https://hub.docker.com/r/pgvector/pgvector/tags>. Confidence: primary.
+- HNSW: `vector` indexes up to 2,000 dimensions, `halfvec` up to 4,000, so 384
+  and 1024 both fit. Defaults: `m = 16`, `ef_construction = 64`,
+  `hnsw.ef_search = 40`. Filters apply after the index scan, so a restrictive
+  filter can return too few rows; since 0.8.0
+  `SET hnsw.iterative_scan = strict_order` (or `relaxed_order`) fixes this, or
+  use partial indexes. Source:
+  <https://github.com/pgvector/pgvector/blob/master/README.md>. Confidence:
+  primary.
+- Bug history: 0.8.2 fixed a buffer overflow in parallel HNSW builds, 0.8.3
+  possible index corruption with HNSW vacuuming, 0.8.4 an "hnsw graph not
+  repaired" error. Source: CHANGELOG above. Confidence: primary.
+- PostgreSQL: current major is 18 (18.6, first released 2025-09-25, supported
+  until 2030-11-14). Version 14 reaches end of life on 2026-11-12. No PostgreSQL
+  19 is listed on 2026-10-29. Source:
+  <https://www.postgresql.org/support/versioning/>. Confidence: primary.
+- German full-text search: PostgreSQL ships a Snowball `german` stemmer and
+  `german.stop` list in its source tree (`src/backend/snowball`, REL_18_STABLE),
+  which initdb turns into the `german` text search configuration. Snowball does
+  not split compounds. Compound splitting needs an ispell or Hunspell dictionary
+  with `compoundwords controlled`, which is an operator-installed dictionary.
+  Sources:
+  <https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/snowball/Makefile>,
+  <https://www.postgresql.org/docs/18/textsearch-dictionaries.html>. Confidence:
+  primary for the stemmer and compound mechanism, secondary for the exact config
+  name that initdb creates.
+- Rust drivers: `sqlx` 0.9.0 (2026-05-21) and `pgvector` 0.4.2 (2026-05-22, MIT
+  or Apache-2.0). The crate's `sqlx` feature supports `sqlx >=0.8, <0.10`; 0.4.2
+  added SQLx 0.9. Types: `Vector`, `HalfVector`, `SparseVector`. Sources:
+  <https://crates.io/crates/pgvector>,
+  <https://github.com/pgvector/pgvector-rust/blob/master/CHANGELOG.md>.
+  Confidence: primary. Whether `sqlx::query!` macros need type overrides for
+  `vector` columns: unverified.
 
-Implication for the design: target PostgreSQL 17 and 18 with pgvector 0.8.7 or newer, `vector(384)` with an HNSW index on `vector_cosine_ops`, and iterative scans enabled for filtered queries. Store a `regconfig` per task (default `german`, `english`) and a generated `tsvector` with a GIN index; run hybrid search (full text plus vector, merged in SQL with reciprocal rank fusion). Keep the dimension in a migration, not in code, so a model change is a controlled migration.
+Implication for the design: target PostgreSQL 17 and 18 with pgvector 0.8.7 or
+newer, `vector(384)` with an HNSW index on `vector_cosine_ops`, and iterative
+scans enabled for filtered queries. Store a `regconfig` per task (default
+`german`, `english`) and a generated `tsvector` with a GIN index; run hybrid
+search (full text plus vector, merged in SQL with reciprocal rank fusion). Keep
+the dimension in a migration, not in code, so a model change is a controlled
+migration.
 
 ## Risks found
 
-1. **Spec and client split.** MCP 2026-07-28 is a breaking rewrite. Claude Code (v2 runtime), Open WebUI and rmcp speak it; Claude connectors document the older 2025 auth specs; Codex has it opt-in since 0.147.0. Serve both revisions (rmcp does) and test against each client in CI.
-2. **No file upload standard.** SEP-2356 and SEP-2631 were closed unmerged and the extension is experimental. Design uploads around the web UI and single-use upload URLs, not tool arguments.
-3. **Elicitation is not a trust boundary.** Clients can auto-answer (Claude Code hooks), headless runs may not serve it, Codex has open bugs, Claude Desktop is undocumented. Require approvals for the admin MCP in the platform's own web UI.
-4. **Claude Desktop reachability and auth.** It connects from Anthropic's cloud, needs OAuth (DCR or CIMD) and a public HTTPS endpoint, and static headers are a limited beta. Open WebUI allows MCP servers only through admins, with one bearer token per connection. Per-profile tokens mean one connection per profile.
-5. **Dependency churn.** `rmcp` went from 1.0 to 3.8 in eight months, `ort` is still rc.15 (pinned exactly by fastembed), the Typst Rust API changes each minor release, and `typst-as-lib` calls itself unstable. Pin, wrap behind internal traits, and schedule upgrades.
-6. **License traps and the CAS gap.** Symbolica is source-available with runtime licensing, `evalexpr` has been AGPL since 12.0.0, `malachite` and `rug` are LGPL. No mature permissive Rust CAS exists, so answer checking is custom code or a sidecar. Enforce with `cargo deny`.
-7. **Document pipeline weight.** The docling-serve CPU image is 4.4 GB, CPU speed is about 1 to 1.5 pages per second on 16 threads, the sync endpoint times out at 120 seconds, and Tesseract ships without German data. LaTeX quality for school math is unmeasured. Make it optional, asynchronous and human-reviewed.
-8. **Vendor login rules.** Anthropic forbids offering claude.ai login or rate limits in third-party products without approval; OpenAI allows plan usage only through SIWC for open-source or local apps (preview) and excludes hosted or commercial use. Never route a user's consumer login through the platform.
+1. **Spec and client split.** MCP 2026-07-28 is a breaking rewrite. Claude Code
+   (v2 runtime), Open WebUI and rmcp speak it; Claude connectors document the
+   older 2025 auth specs; Codex has it opt-in since 0.147.0. Serve both
+   revisions (rmcp does) and test against each client in CI.
+2. **No file upload standard.** SEP-2356 and SEP-2631 were closed unmerged and
+   the extension is experimental. Design uploads around the web UI and
+   single-use upload URLs, not tool arguments.
+3. **Elicitation is not a trust boundary.** Clients can auto-answer (Claude Code
+   hooks), headless runs may not serve it, Codex has open bugs, Claude Desktop
+   is undocumented. Require approvals for the admin MCP in the platform's own
+   web UI.
+4. **Claude Desktop reachability and auth.** It connects from Anthropic's cloud,
+   needs OAuth (DCR or CIMD) and a public HTTPS endpoint, and static headers are
+   a limited beta. Open WebUI allows MCP servers only through admins, with one
+   bearer token per connection. Per-profile tokens mean one connection per
+   profile.
+5. **Dependency churn.** `rmcp` went from 1.0 to 3.8 in eight months, `ort` is
+   still rc.15 (pinned exactly by fastembed), the Typst Rust API changes each
+   minor release, and `typst-as-lib` calls itself unstable. Pin, wrap behind
+   internal traits, and schedule upgrades.
+6. **License traps and the CAS gap.** Symbolica is source-available with runtime
+   licensing, `evalexpr` has been AGPL since 12.0.0, `malachite` and `rug` are
+   LGPL. No mature permissive Rust CAS exists, so answer checking is custom code
+   or a sidecar. Enforce with `cargo deny`.
+7. **Document pipeline weight.** The docling-serve CPU image is 4.4 GB, CPU
+   speed is about 1 to 1.5 pages per second on 16 threads, the sync endpoint
+   times out at 120 seconds, and Tesseract ships without German data. LaTeX
+   quality for school math is unmeasured. Make it optional, asynchronous and
+   human-reviewed.
+8. **Vendor login rules.** Anthropic forbids offering claude.ai login or rate
+   limits in third-party products without approval; OpenAI allows plan usage
+   only through SIWC for open-source or local apps (preview) and excludes hosted
+   or commercial use. Never route a user's consumer login through the platform.

@@ -6,3 +6,6 @@
 
 # Python bytecode from brand/generate.py
 __pycache__/
+
+# Node tooling
+node_modules/
