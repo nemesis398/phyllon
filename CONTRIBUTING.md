@@ -3,6 +3,8 @@
 Thank you for helping. This file says what a pull request needs. By taking part
 you agree to the [code of conduct](CODE_OF_CONDUCT.md).
 
+The hooks, the gate script and CI described below arrive later in phase 1.
+
 ## Sign-off
 
 Phyllon uses the
@@ -16,7 +18,8 @@ Add the sign-off with `git commit -s`. It appends one line to the message:
 Signed-off-by: Your Name <you@example.com>
 ```
 
-CI checks every commit of a pull request for it.
+It must match the commit's author name and email. CI checks every commit of a
+pull request for it.
 
 An agent may add the sign-off of the person who directs it, only on that
 person's instruction, and the agent is credited with a `Co-Authored-By:`
@@ -41,7 +44,8 @@ Run this once in your clone:
 git config core.hooksPath .githooks
 ```
 
-The pre-commit hook then runs the gate before each commit.
+The pre-commit hook then runs the gate before each commit that touches Rust or
+Cargo files.
 
 ## The gate
 
