@@ -164,24 +164,24 @@ Done: merged in e853d45 (#1) on 2026-10-29.
 - Produces: the sign-off rule and the hook setup line in CONTRIBUTING, which
   Tasks 4 and 6 implement.
 
-- [ ] **Step 1: Mika confirms the aliases.** Mika creates `security@phyllon.de`
+- [x] **Step 1: Mika confirms the aliases.** Mika creates `security@phyllon.de`
       and `conduct@phyllon.de` as forwarding aliases and confirms that a test
       mail to each arrives. SECURITY and CODE_OF_CONDUCT are not merged before
       that.
-- [ ] **Step 2: Vendor the two texts unchanged.** `LICENSE` is
+- [x] **Step 2: Vendor the two texts unchanged.** `LICENSE` is
       <https://www.gnu.org/licenses/agpl-3.0.txt>. `CODE_OF_CONDUCT.md` is
       Contributor Covenant 3.0 from
       <https://www.contributor-covenant.org/version/3/0/code_of_conduct/>, with
       `conduct@phyllon.de` as the reporting contact. Add both paths to
       `.prettierignore`, so the formatter leaves the vendored text alone.
-- [ ] **Step 3: Write the README.** Contents, in order: the lockup
+- [x] **Step 3: Write the README.** Contents, in order: the lockup
       (`brand/lockup.svg`); what Phyllon is, in two sentences from the design's
       intent; status ("a skeleton, nothing to use yet"); the principle ("decide
       in code, phrase in the model"); the quickstart, as a link to
       `docs/install.md`, which Task 14 writes; links to the design, the roadmap,
       CONTRIBUTING and SECURITY; badges for CI, Scorecard and the license, and
       no others. License line: AGPL-3.0-or-later.
-- [ ] **Step 4: Write CONTRIBUTING.** Sections: the sign-off (what the DCO
+- [x] **Step 4: Write CONTRIBUTING.** Sections: the sign-off (what the DCO
       certifies, `git commit -s`, and the agent rule from the design word for
       word: an agent adds the sign-off of the person who directs it, only on
       that person's instruction, and is credited with a `Co-Authored-By:`
@@ -190,20 +190,23 @@ Done: merged in e853d45 (#1) on 2026-10-29.
       (`git config core.hooksPath .githooks`); the gate (`scripts/check.sh`);
       AI-assisted contributions (welcome under the same rules; the pull request
       says what ran, what did not, and what is unsure).
-- [ ] **Step 5: Write SECURITY.** Channels: GitHub private vulnerability
+- [x] **Step 5: Write SECURITY.** Channels: GitHub private vulnerability
       reporting first, `security@phyllon.de` as the fallback. Supported
       versions: the latest release only, until 1.0. First answer within 14 days.
       Coordinated disclosure: a fix and an advisory together, crediting the
       reporter unless they decline.
-- [ ] **Step 6: Write the GitHub templates.** `bug.yml` asks for the version,
+- [x] **Step 6: Write the GitHub templates.** `bug.yml` asks for the version,
       the install path (Docker, Podman, Quadlet), the steps, the expected and
       the actual result. `proposal.yml` asks for the problem and who has it,
       before any solution. `config.yml` turns blank issues off and links
       security reports to the private reporting page. The pull request template
       asks for the sign-off, what ran, what did not, and what the author is
       unsure of.
-- [ ] **Step 7: Ship.** Title:
+- [x] **Step 7: Ship.** Title:
       `docs: add the readme, license, contributing, security and conduct files`.
+
+Done: merged in f607047 (#2) on 2026-10-29. Mika confirmed both aliases on
+2026-10-29.
 
 ### Task 3: Agent rules, decision records and lessons
 
