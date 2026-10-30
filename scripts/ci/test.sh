@@ -524,7 +524,67 @@ a_symlinked_skill_fails() {
 	link_skill review
 	run_links
 	expect_status 1
-	expect_out ".agents/skills/review"
+	expect_out ".agents/skills/review: is a symlink"
+}
+
+a_file_among_the_skills_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	echo notes >"$tree/.agents/skills/README.md"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/README.md: is not a directory"
+}
+
+# A SKILL.md that is a symlink would ship whatever it points to.
+a_symlinked_skill_md_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	echo '---' >"$tree/outside.md"
+	rm -- "$tree/.agents/skills/conscience/SKILL.md"
+	ln -s -- ../../../outside.md "$tree/.agents/skills/conscience/SKILL.md"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/conscience/SKILL.md: is a symlink"
+}
+
+# A symlinked .agents would ship a tree from outside the repository.
+a_symlinked_agents_directory_fails() {
+	new_tree
+	rm -r -- "$tree/.agents"
+	mkdir -p "$tree/elsewhere/skills/conscience"
+	echo '---' >"$tree/elsewhere/skills/conscience/SKILL.md"
+	ln -s -- elsewhere "$tree/.agents"
+	link_skill conscience
+	run_links
+	expect_status 1
+	expect_out ".agents/skills: resolves outside the repository"
+}
+
+a_symlinked_link_directory_fails() {
+	new_tree
+	add_skill conscience
+	rm -r -- "$tree/.claude/skills"
+	mkdir "$tree/elsewhere"
+	ln -s -- ../.agents/skills/conscience "$tree/elsewhere/conscience"
+	ln -s -- ../elsewhere "$tree/.claude/skills"
+	run_links
+	expect_status 1
+	expect_out ".claude/skills: resolves outside the repository"
+}
+
+# Each link points straight at its skill. A chain through a second link, here
+# one with an absolute target, resolves only on the machine that made it.
+a_chain_through_an_absolute_link_fails() {
+	new_tree
+	add_skill conscience
+	ln -s -- "$tree/.agents/skills/conscience" "$tree/hop"
+	link_skill conscience ../../hop
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/conscience: links to ../../hop, not to the skill"
 }
 
 a_name_with_spaces_is_checked() {
@@ -585,6 +645,14 @@ a_root_that_is_not_a_directory_is_a_usage_error() {
 	tree="$scratch/nowhere"
 	run_links
 	expect_status 2
+}
+
+# An empty argument is a mistake, not a request for the default root.
+an_empty_root_is_a_usage_error() {
+	tree=""
+	run_links
+	expect_status 2
+	expect_out "ROOT is empty"
 }
 
 # Repository settings. The stub gh answers `gh api [-X METHOD] [-H HEADER]...
@@ -1630,12 +1698,18 @@ tests=(
 	a_link_to_another_skill_fails
 	a_skill_without_a_skill_md_fails
 	a_symlinked_skill_fails
+	a_file_among_the_skills_fails
+	a_symlinked_skill_md_fails
+	a_symlinked_agents_directory_fails
+	a_symlinked_link_directory_fails
+	a_chain_through_an_absolute_link_fails
 	a_name_with_spaces_is_checked
 	an_empty_skill_directory_fails
 	a_missing_skill_directory_fails
 	a_missing_link_directory_fails_for_each_skill
 	without_an_argument_it_checks_its_own_tree
 	a_root_that_is_not_a_directory_is_a_usage_error
+	an_empty_root_is_a_usage_error
 	the_audit_passes_when_every_setting_matches_and_only_reads
 	repository_flags_that_differ_fail
 	security_settings_that_differ_fail
