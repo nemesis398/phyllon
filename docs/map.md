@@ -45,8 +45,8 @@ uses.
   clear it.
 - A failure prints `phyllon: <reason>` on stderr and exits 1, and a usage error
   exits 2. The error for a secret file names its key and path, never its
-  content, and a parse error of the config file quotes no text of the file (see
-  `config`).
+  content, and a parse error of the config file quotes no text of the file but
+  key names (see `config`).
 - The database password is read into a `Secret` once, by `serve`, and handed
   only to `db::pool`. The log lines `serve` writes, at level INFO, hold the
   version, the commit and the listen address, or say that the server is
@@ -78,9 +78,10 @@ to. Types: `Config`, `DatabaseConfig`, `Secret`, `ConfigError` and `ParseError`.
   keys involved and a line and column, but no other text of the config file. So
   a secret pasted into the file, such as a `password` key that
   `deny_unknown_fields` rejects, does not reach the log through the error.
-  Syntax messages come from static text in the `toml` parser. Serde messages are
-  rebuilt from known shapes with the value cut out, and any other shape is
-  withheld.
+  Syntax and serde messages pass an allowlist that cuts serde's values out. Any
+  other message becomes a fixed one. The syntax list comes from toml 1.1.8 and
+  its parser crates, and a bump of them must extend it. Key names are cut to 64
+  characters.
 - A `Secret` cannot leak through `Debug`: `{:?}` and `{:#?}` print
   `Secret([redacted])`. Its text comes out only through `Secret::expose`, whose
   one caller is `db::pool`.
