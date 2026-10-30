@@ -327,11 +327,11 @@ Done: merged in fd46d5c (#4) on 2026-10-30.
 - Produces: `PHYLLON_GATE_CMD`, an environment variable that replaces
   `scripts/check.sh` in `stop-gate.sh`, used only by `scripts/hooks/test.sh`.
 
-- [ ] **Step 1: Read the hook docs** for the pinned Claude Code version: the
+- [x] **Step 1: Read the hook docs** for the pinned Claude Code version: the
       JSON a `PostToolUse` and a `Stop` hook receive on stdin
       (`tool_input.file_path`, `stop_hook_active`), and what exit code 2 does
       for each.
-- [ ] **Step 2: Write the failing tests** in `scripts/hooks/test.sh`, each one a
+- [x] **Step 2: Write the failing tests** in `scripts/hooks/test.sh`, each one a
       function that feeds a JSON document to `stop-gate.sh` in a temporary git
       repository and checks the exit code: `gate_green_lets_the_agent_stop`
       (fake gate exits 0, hook exits 0 and writes `target/.gate-green`);
@@ -341,22 +341,24 @@ Done: merged in fd46d5c (#4) on 2026-10-30.
       `a_repeated_red_stop_is_let_through` (`stop_hook_active: true` and the
       same fingerprint as the last red run: exit 0, stderr says the gate is
       still red).
-- [ ] **Step 3: Run them.** Run `scripts/hooks/test.sh`. Expected: all four
+- [x] **Step 3: Run them.** Run `scripts/hooks/test.sh`. Expected: all four
       fail, because `stop-gate.sh` does not exist.
-- [ ] **Step 4: Write `stop-gate.sh`.** The fingerprint is the SHA-256 over the
+- [x] **Step 4: Write `stop-gate.sh`.** The fingerprint is the SHA-256 over the
       contents of every tracked and untracked file matching `*.rs`,
       `Cargo.toml`, `Cargo.lock`, `*.toml` at the root and
       `.github/workflows/*`. A match with `target/.gate-green` exits 0;
       otherwise it runs the gate, writes the fingerprint to `target/.gate-green`
       on success or `target/.gate-red` on failure, and exits 2 with the output
       on stderr.
-- [ ] **Step 5: Write `format-edited.sh`,** which runs `rustfmt --edition 2024`
+- [x] **Step 5: Write `format-edited.sh`,** which runs `rustfmt --edition 2024`
       on an edited `*.rs` file and always exits 0.
-- [ ] **Step 6: Register both** in `.claude/settings.json`: `PostToolUse` with
+- [x] **Step 6: Register both** in `.claude/settings.json`: `PostToolUse` with
       the matcher `Edit|MultiEdit|Write`, and `Stop`.
-- [ ] **Step 7: Run the tests.** Run `scripts/hooks/test.sh`. Expected: four
+- [x] **Step 7: Run the tests.** Run `scripts/hooks/test.sh`. Expected: four
       passes.
-- [ ] **Step 8: Ship.** Title: `build: run the gate as a Claude Code stop hook`.
+- [x] **Step 8: Ship.** Title: `build: run the gate as a Claude Code stop hook`.
+
+Done: merged in cd4d0e0 (#5) on 2026-10-30.
 
 ### Task 6: CI workflows and Dependabot
 

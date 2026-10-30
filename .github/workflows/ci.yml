@@ -1,0 +1,201 @@
+# CI for every pull request and every push to main. Every job is a required
+# check: the branch ruleset names each job, so a renamed or added job changes
+# scripts/github-settings.sh too. The pr-title check lives in pr-title.yml,
+# because it also runs when the title is edited.
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# A new push to a pull request cancels the run for the old one. Each push to
+# main gets its own group, because GitHub would replace a waiting run in a
+# shared group, and that commit would go without CI.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup reads rust-toolchain.toml.
+      - run: rustup toolchain install --no-self-update
+      # Only main saves the cache. A pull request restores main's, and GitHub
+      # keeps what a pull request saves to that pull request, so saving there
+      # only crowds main's out. The release workflow must restore no cache.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The same versions as on the maintainer's machine.
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-nextest@0.9.149,cargo-shear@1.14.0,cargo-deny@0.20.2
+          fallback: none
+      - run: scripts/check.sh
+      - run: cargo deny check advisories
+      - run: cargo doc --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  integration:
+    name: integration (${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 17
+            image: pgvector/pgvector@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d # 0.8.7-pg17
+          - postgres: 18
+            image: pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11 # 0.8.7-pg18
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phyllon
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phyllon" --health-interval 2s
+          --health-timeout 5s --health-retries 30
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: phyllon
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-nextest@0.9.149
+          fallback: none
+      # The tests that need PostgreSQL are the ignored ones. None exists until
+      # Task 9, which removes --no-tests=pass.
+      - run: cargo nextest run --locked --run-ignored only --no-tests=pass
+
+  sign-off:
+    name: sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # fetch-depth: 0 fetches every branch as origin/<branch>, so the range
+      # starts at the base branch as it is now; the event's base.sha can be
+      # stale. PR_AUTHOR comes from GitHub, not from the commits, so it is
+      # what the Dependabot exemption trusts.
+      - run: scripts/ci/check-signoff.sh "origin/$BASE_REF" "$HEAD_SHA"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+
+  # Reviews the dependencies a pull request adds or changes, in every
+  # ecosystem GitHub's dependency graph sees (crates, npm, actions) and in
+  # every scope: runtime, development and unknown. It fails when an added
+  # version has a known advisory of any severity, or when an added or changed
+  # dependency has a license outside deny.toml's allowlist. Dependencies the
+  # pull request does not touch are not reviewed; cargo deny covers the whole
+  # tree. Public repositories have the dependency graph.
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          # The default is runtime only, which skips every npm dev dependency
+          # and any change the graph labels unknown.
+          fail-on-scopes: runtime, development, unknown
+          # A reviewed exception for an advisory goes into allow-ghsas, one
+          # GHSA ID with its reason each. There are none, so a pull request
+          # that adds a version with an open advisory fails, dev-only or not,
+          # such as katex or re2js in the markdownlint tree.
+          # The same list as [licenses] allow in deny.toml.
+          allow-licenses: >-
+            MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause,
+            BSD-3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0, CC0-1.0,
+            AGPL-3.0-or-later
+          # argparse (2.0.1 Python-2.0, 3.0.3 PSF-2.0) is a dev-only
+          # dependency of markdownlint-cli2 and never ships in the binary, so
+          # its license is not checked. The action matches the purl by type and
+          # name and ignores the version, so this covers both.
+          allow-dependencies-licenses: pkg:npm/argparse
+
+  markdown:
+    name: markdown
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # prettier and markdownlint-cli2 need no install scripts.
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --check .
+      - run: npx markdownlint-cli2
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The runner's shellcheck follows its image (0.9.0 on Ubuntu 24.04 flags
+      # what 0.11.0 does not), so CI installs the maintainer's version and
+      # checks that it is the one on PATH.
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: shellcheck@0.11.0
+          fallback: none
+      - name: shellcheck
+        run: |
+          shellcheck --version | grep -Fx 'version: 0.11.0'
+          git ls-files -z -- ':(glob)scripts/**/*.sh' ':(glob).githooks/*' |
+            xargs -0 shellcheck
+      - run: scripts/ci/test.sh
+      - run: scripts/hooks/test.sh

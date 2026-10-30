@@ -3,8 +3,6 @@
 Thank you for helping. This file says what a pull request needs. By taking part
 you agree to the [code of conduct](CODE_OF_CONDUCT.md).
 
-The hooks, the gate script and CI described below arrive later in phase 1.
-
 ## Sign-off
 
 Phyllon uses the

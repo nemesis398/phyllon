@@ -5,9 +5,8 @@ tool runs it. They are short on purpose. Hooks and CI enforce the ones that
 matter most, because an instruction file alone does not reliably change what an
 agent does.
 
-The gate script, the hooks, CI, `docs/map.md` and the skills under
-`.agents/skills/` named below arrive later in phase 1, so some of them do not
-exist yet.
+`docs/map.md` and the skills under `.agents/skills/` named below arrive later in
+phase 1, so they do not exist yet.
 
 ## Rules
 
@@ -19,10 +18,12 @@ exist yet.
    test that never failed may not exercise your code.
 3. **Never weaken a gate to get green.** The gate's files are `Cargo.toml`
    `[lints]`, `clippy.toml`, `deny.toml`, `rust-toolchain.toml`,
-   `.github/workflows/`, `.githooks/`, `.claude/settings.json` and
-   `scripts/check.sh`. Change them, add an `#[allow]` without a written reason,
-   or `#[ignore]` or delete a test only with the maintainer's explicit approval
-   in the pull request, because a verifier the agent can edit stops being one.
+   `.github/workflows/`, `.githooks/`, `.claude/settings.json`,
+   `scripts/check.sh`, `scripts/hooks/`, `scripts/ci/`, `.prettierrc.yaml`,
+   `.prettierignore` and `.markdownlint-cli2.yaml`. Change them, add an
+   `#[allow]` without a written reason, or `#[ignore]` or delete a test only
+   with the maintainer's explicit approval in the pull request, because a
+   verifier the agent can edit stops being one.
 4. **No `unsafe`, `unwrap`, `expect`, `panic!`, `todo!` or unchecked indexing
    outside tests.** Return typed errors, because a panic on request input is a
    denial-of-service bug.
