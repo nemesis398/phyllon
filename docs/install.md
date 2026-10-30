@@ -202,8 +202,8 @@ steps as your own user, not as root.
    because the first release does not exist yet.
 
 4. Let your services run when you are not logged in, then load the units and
-   start the stack. Linger is a systemd setting for your user, and on a default
-   Fedora it asks for an administrator's password.
+   start the stack. Linger is a systemd setting for your user. Turning it on for
+   yourself needs no root: polkit allows `set-self-linger` for every user.
 
    ```bash
    loginctl enable-linger
