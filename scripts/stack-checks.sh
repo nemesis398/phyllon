@@ -41,9 +41,15 @@ stack_checks() {
 		if [[ "$code" == 200 ]]; then pass "$path answers 200"; else fail "$path answers $code, want 200"; fi
 	done
 
-	# The start page is the shell's HTML, through Caddy.
-	out="$(curl -sk "https://localhost:8443/" || true)"
-	if [[ "$out" == *Phyllon* ]]; then pass "/ contains Phyllon"; else fail "/ does not contain Phyllon"; fi
+	# The start page is the shell's HTML, through Caddy. The branded 404 and 500
+	# say "Phyllon" too, so the check wants status 200 and a sentence that only
+	# the start page holds.
+	code="$(curl -sk -o "$work/start.html" -w '%{http_code}' "https://localhost:8443/" || true)"
+	if [[ "$code" == 200 ]] && command grep -qF 'There is nothing to sign in to yet.' "$work/start.html"; then
+		pass "/ is the start page"
+	else
+		fail "/ answers $code, want 200 with the start page"
+	fi
 
 	# The answers are read from stdout; stderr goes to a file for the message.
 	out="$(sql postgres 'SHOW password_encryption' 2>"$work/err" || true)"

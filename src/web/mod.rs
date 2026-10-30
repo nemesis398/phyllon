@@ -9,6 +9,7 @@ pub mod strings;
 
 use askama::Template;
 use axum::Router;
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
@@ -101,6 +102,18 @@ struct Shell<'a> {
     source: Option<Source<'a>>,
 }
 
+impl<'a> Shell<'a> {
+    /// The shell of a page that knows the running build.
+    fn of(state: &'a AppState) -> Shell<'a> {
+        Shell {
+            source: Some(Source {
+                version: state.build.version,
+                url: &state.source_url,
+            }),
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "index.html")]
 struct StartPage<'a> {
@@ -123,12 +136,13 @@ pub fn routes() -> Router<AppState> {
         .route("/assets/{*path}", get(asset))
 }
 
-/// The branded 404 page, also the answer for an unknown asset.
-pub async fn not_found() -> Response {
+/// The branded 404 page, also the answer for an unknown asset. It carries the
+/// full footer, source link included.
+pub async fn not_found(State(state): State<AppState>) -> Response {
     page(
         StatusCode::NOT_FOUND,
         &ErrorPage {
-            shell: Shell { source: None },
+            shell: Shell::of(&state),
             heading: strings::NOT_FOUND_HEADING,
             text: strings::NOT_FOUND_TEXT,
         },
@@ -171,18 +185,21 @@ async fn start_page(State(state): State<AppState>) -> Response {
     page(
         StatusCode::OK,
         &StartPage {
-            shell: Shell {
-                source: Some(Source {
-                    version: state.build.version,
-                    url: &state.source_url,
-                }),
-            },
+            shell: Shell::of(&state),
         },
     )
 }
 
-async fn asset(Path(path): Path<String>) -> Response {
-    match ASSETS.iter().find(|asset| asset.name == path) {
+/// Serves one asset by name. A path that is not valid UTF-8 once decoded names
+/// no asset, so it gets the branded 404 and not axum's plain-text 400.
+async fn asset(
+    State(state): State<AppState>,
+    path: Result<Path<String>, PathRejection>,
+) -> Response {
+    let found = path
+        .ok()
+        .and_then(|Path(path)| ASSETS.iter().find(|asset| asset.name == path));
+    match found {
         Some(asset) => (
             [
                 (CONTENT_TYPE, asset.content_type),
@@ -191,6 +208,6 @@ async fn asset(Path(path): Path<String>) -> Response {
             asset.body,
         )
             .into_response(),
-        None => not_found().await,
+        None => not_found(State(state)).await,
     }
 }

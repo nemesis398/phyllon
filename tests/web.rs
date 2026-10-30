@@ -61,6 +61,11 @@ mod support {
         }
     }
 
+    /// A handler that panics, to reach the 500 page.
+    pub async fn boom() -> &'static str {
+        panic!("secret detail");
+    }
+
     /// Sends a GET request to `path` and returns the answer.
     pub async fn get_path(app: &Router, path: &str) -> Response<Body> {
         let request = Request::builder()
@@ -101,6 +106,9 @@ mod support {
 }
 use support::*;
 
+/// The source link of the test build, as the footer must carry it.
+const SOURCE_LINK: &str = r#"href="https://github.com/nemesis398/phyllon/tree/abc123""#;
+
 #[tokio::test]
 async fn start_page_names_phyllon_and_links_the_source() {
     let app = router(state("start_page"));
@@ -113,7 +121,7 @@ async fn start_page_names_phyllon_and_links_the_source() {
     assert!(body.contains("Phyllon"), "{body}");
     assert!(body.contains("1.2.3"), "the version is missing: {body}");
     assert!(
-        body.contains(r#"href="https://github.com/nemesis398/phyllon/tree/abc123""#),
+        body.contains(SOURCE_LINK),
         "the source link is missing: {body}"
     );
 }
@@ -176,10 +184,17 @@ async fn assets_have_their_types_and_cache_headers() {
         "/assets/fonts/",
         "/assets/../Cargo.toml",
         "/assets/fonts/../phyllon.css",
+        // Not valid UTF-8 once decoded: axum would answer 400 in plain text.
+        "/assets/%FF",
     ] {
         let response = get_path(&app, path).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
-        assert!(text(response).await.contains("Page not found"), "{path}");
+        let body = text(response).await;
+        assert!(body.contains("Page not found"), "{path}: {body}");
+        assert!(
+            body.contains(SOURCE_LINK),
+            "{path} lacks the footer: {body}"
+        );
     }
 }
 
@@ -187,8 +202,14 @@ async fn assets_have_their_types_and_cache_headers() {
 async fn pages_load_nothing_from_other_origins() {
     let app = router(state("origins"));
 
+    let panicking = with_security_layers(Router::new().route("/boom", get(boom)));
+    let mut pages = Vec::new();
     for path in ["/", "/no-such-page"] {
-        let body = text(get_path(&app, path).await).await;
+        pages.push((path, text(get_path(&app, path).await).await));
+    }
+    pages.push(("/boom", text(get_path(&panicking, "/boom").await).await));
+
+    for (path, body) in pages {
         assert!(!body.contains("<script"), "a script on {path}: {body}");
         assert!(!body.contains("<style"), "a style block on {path}: {body}");
         assert!(
@@ -200,6 +221,13 @@ async fn pages_load_nothing_from_other_origins() {
             assert!(
                 !rest.starts_with("src=\"http://") && !rest.starts_with("src=\"https://"),
                 "an external src on {path}: {body}"
+            );
+        }
+        for (start, _) in body.match_indices("srcset=\"") {
+            let value = body.get(start + 8..).unwrap().split('"').next().unwrap();
+            assert!(
+                !value.contains("http://") && !value.contains("https://"),
+                "an external srcset on {path}: {value}"
             );
         }
         for tag in body.split("<link").skip(1) {
@@ -226,13 +254,13 @@ async fn the_not_found_page_is_branded() {
         body.contains(r#"href="/""#),
         "no link back to the start: {body}"
     );
+    assert!(body.contains("Version 1.2.3"), "no version: {body}");
+    assert!(body.contains("AGPL-3.0-or-later"), "no license: {body}");
+    assert!(body.contains(SOURCE_LINK), "no source link: {body}");
 }
 
 #[tokio::test]
 async fn a_panic_shows_the_branded_error_page() {
-    async fn boom() -> &'static str {
-        panic!("secret detail");
-    }
     let app = with_security_layers(Router::new().route("/boom", get(boom)));
 
     let response = get_path(&app, "/boom").await;
