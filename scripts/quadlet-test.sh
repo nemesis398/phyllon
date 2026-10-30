@@ -58,8 +58,14 @@ for name in "${volumes[@]}"; do
 done
 
 work="$(mktemp -d -p "${TMPDIR:-/tmp}" phyllon-quadlet-test.XXXXXX)"
-made_units_dir=false
-[[ -d "$units_dir" ]] || made_units_dir=true
+# Each directory level mkdir -p creates below, deepest first, so that cleanup
+# removes those levels and no others.
+made_dirs=()
+dir="$units_dir"
+while [[ ! -d "$dir" ]]; do
+	made_dirs+=("$dir")
+	dir="$(dirname -- "$dir")"
+done
 services=()
 for unit in "${units[@]}"; do
 	case "$unit" in
@@ -69,13 +75,15 @@ for unit in "${units[@]}"; do
 	esac
 done
 cleanup() {
-	local unit
+	local unit dir
 	systemctl --user stop "${services[@]}" >/dev/null 2>&1 || true
 	for unit in "${units[@]}"; do
 		rm -rf -- "${units_dir:?}/$unit" "${units_dir:?}/$unit.d"
 	done
 	rm -rf -- "$config_dir"
-	[[ "$made_units_dir" == false ]] || rmdir -- "$units_dir" 2>/dev/null || true
+	for dir in ${made_dirs[@]+"${made_dirs[@]}"}; do
+		rmdir -- "$dir" 2>/dev/null || break
+	done
 	systemctl --user daemon-reload || true
 	systemctl --user reset-failed "${services[@]}" >/dev/null 2>&1 || true
 	podman rm --force --ignore -- "${containers[@]%%:*}" >/dev/null || true
@@ -143,7 +151,8 @@ done
 # Each container gets only the passwords it needs, each a file only its user
 # may read (mode 0400 is 256). Inspect shows what Podman was asked for; the
 # stat below shows that it did so, in the one container with a shell.
-for entry in "phyllon-db:999:db_owner db_runtime db_superuser" "phyllon:65532:db_runtime"; do
+for entry in "phyllon-db:999:db_owner db_runtime db_superuser" "phyllon:65532:db_runtime" \
+	"phyllon-proxy:65533:"; do
 	IFS=: read -r name uid want <<<"$entry"
 	want="$(for role in $want; do
 		printf 'phyllon-%s-password %s %s 256\n' "${role//_/-}" "$uid" "$uid"
@@ -151,7 +160,7 @@ for entry in "phyllon-db:999:db_owner db_runtime db_superuser" "phyllon:65532:db
 	got="$(podman inspect "$name" |
 		jq -r '.[0].Config.Secrets // [] | map("\(.Name) \(.UID) \(.GID) \(.Mode)") | sort | join(",")' || true)"
 	if [[ "$got" == "$want" ]]; then
-		pass "$name gets only its secrets, readable only by $uid"
+		pass "$name gets only its secrets${want:+, readable only by $uid}"
 	else
 		fail "$name gets the secrets '$got', want '$want'"
 	fi
@@ -163,6 +172,26 @@ if [[ "$(awk '$2 == 999 && $3 == 999 && $4 == 400' <<<"$out" | wc -l)" == 3 ]]; 
 else
 	fail "phyllon-db's secrets are not mode 0400 and owned by 999: $out"
 fi
+
+# PostgreSQL sits on the internal network alone, so it has no route out and
+# nothing outside reaches it; only Phyllon is on both networks.
+out="$(podman network inspect --format '{{.Internal}}' systemd-phyllon-db 2>&1 || true)"
+if [[ "$out" == true ]]; then
+	pass "systemd-phyllon-db is internal"
+else
+	fail "systemd-phyllon-db is not internal: $out"
+fi
+for entry in phyllon-db:systemd-phyllon-db phyllon:systemd-phyllon-db,systemd-phyllon-edge \
+	phyllon-proxy:systemd-phyllon-edge; do
+	name="${entry%%:*}"
+	want="${entry#*:}"
+	got="$(podman inspect "$name" | jq -r '.[0].NetworkSettings.Networks // {} | keys | join(",")' || true)"
+	if [[ "$got" == "$want" ]]; then
+		pass "$name is on $want only"
+	else
+		fail "$name is on '$got', want $want"
+	fi
+done
 
 stack_checks podman "$project"
 
