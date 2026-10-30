@@ -7,7 +7,8 @@
 # Also remove proxy from COMPOSE_PROFILES in .env, so that Caddy does not
 # start (see docs/install.md). Before you use it, change three things:
 #
-# - The network name proxy below, to the network Traefik is attached to.
+# - The name: under networks.proxy and the traefik.docker.network label, to
+#   the network Traefik is attached to. Keep the key proxy.
 # - The entry point websecure, if your Traefik names its HTTPS entry point
 #   differently.
 # - The certresolver, to the name of a resolver in your Traefik configuration.
@@ -21,12 +22,12 @@ services:
       - traefik.enable=true
       # phyllon is on three networks and Traefik must use the one it shares.
       - traefik.docker.network=proxy
-      - traefik.http.routers.phyllon.rule=Host(`${PHYLLON_DOMAIN:?set
-        PHYLLON_DOMAIN in .env}`)
+      - traefik.http.routers.phyllon.rule=Host(`${PHYLLON_DOMAIN:?}`)
       - traefik.http.routers.phyllon.entrypoints=websecure
       - traefik.http.routers.phyllon.tls.certresolver=CHANGE_ME_CERTRESOLVER
       - traefik.http.services.phyllon.loadbalancer.server.port=8080
 
 networks:
   proxy:
+    name: proxy
     external: true

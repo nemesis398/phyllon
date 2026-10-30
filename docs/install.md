@@ -1,9 +1,11 @@
 # Install Phyllon
 
 This guide runs Phyllon, its PostgreSQL database and a Caddy proxy on one host.
-It has three paths: Docker, Podman, and Podman under systemd with Quadlet. Each
-setup command is one that `scripts/stack-test.sh` or `scripts/quadlet-test.sh`
-runs in CI, so the guide and the tests cannot drift apart unnoticed.
+It has three paths: Docker, Podman, and Podman under systemd with Quadlet.
+`scripts/stack-test.sh` and `scripts/quadlet-test.sh` run in CI and do by script
+what this guide has you do by hand: the password files, `compose up`, and the
+Quadlet copy and start. CI does not exercise the rest: the local image build,
+linger, the sysctl, the drop-ins and the Traefik override's `up`.
 
 ## What you need
 
@@ -15,7 +17,8 @@ runs in CI, so the guide and the tests cannot drift apart unnoticed.
     `sudo dnf install podman docker-compose`), or
   - Podman 5 and systemd, for the Quadlet path.
 
-  CI runs the Podman paths on Fedora 44, and older versions are untested.
+  CI tests the Podman paths with Podman 5.8 on Fedora 44 and the Docker path
+  with Docker on GitHub's `ubuntu-latest` runner. Other versions are untested.
 
 - `git` and `openssl`.
 
@@ -23,7 +26,12 @@ CI runs both Podman paths with SELinux enforcing. The compose file and the units
 relabel what they mount, so you need no SELinux setting of your own.
 
 The commands below say `docker compose`. With Podman, say `podman compose`
-instead and give it the same arguments.
+instead and give it the same arguments. `podman compose` talks to Podman's API
+socket, which Fedora does not start by default, so start it once:
+
+```bash
+systemctl --user enable --now podman.socket
+```
 
 ## Quickstart on localhost
 
@@ -49,11 +57,6 @@ needs no root even under rootless Podman.
    done
    ```
 
-   To replace a password later, delete its file first: the mode makes it
-   read-only for you too. A new password does not change the database of a
-   running installation. The roles keep the old one until you change them in
-   PostgreSQL.
-
 3. Check that all three files exist and are not empty.
 
    ```bash
@@ -70,10 +73,16 @@ needs no root even under rootless Podman.
    in its place, and the database setup then fails on a password it cannot read.
 
 4. Build the image. This step is temporary, until the first release is published
-   (see [Build the image yourself](#build-the-image-yourself)):
+   (see [Build the image yourself](#build-the-image-yourself)). With Podman:
 
    ```bash
    podman build -t ghcr.io/nemesis398/phyllon:0.1 .
+   ```
+
+   With Docker:
+
+   ```bash
+   docker build -t ghcr.io/nemesis398/phyllon:0.1 .
    ```
 
 5. Start the stack and wait until every service is healthy.
@@ -85,19 +94,22 @@ needs no root even under rootless Podman.
    The first start pulls two images and sets up the database, so allow a minute
    or two.
 
-6. Open <https://localhost:8443>, or check from a shell:
+6. Check that Phyllon answers:
 
    ```bash
+   curl -k https://localhost:8443/healthz
    curl -k https://localhost:8443/readyz
    ```
 
-   `/healthz` answers while Phyllon runs. `/readyz` answers `ok` once Phyllon
-   can reach the database, and `503` with `database unavailable` if it cannot.
+   `/healthz` answers `ok` while Phyllon runs. `/readyz` answers `ok` once
+   Phyllon can reach the database, and `503` with `database unavailable` if it
+   cannot. Every other path, `/` included, answers 404 until the web interface
+   arrives in a later release.
 
-Your browser warns about the certificate. For `localhost`, Caddy cannot get a
-certificate from a public authority, so it signs one with its own internal
-authority, and no browser trusts that. Accept the warning, or give `curl` the
-`-k` flag as above. A real domain, below, gets a trusted certificate on its own.
+For `localhost`, Caddy cannot get a certificate from a public authority, so it
+signs one with its own internal authority, and no browser or `curl` trusts that.
+That is why `curl` needs `-k` above, and why a browser would warn you. A real
+domain, below, gets a trusted certificate on its own.
 
 To stop the stack and keep its data, run `docker compose down`.
 
@@ -122,11 +134,17 @@ nothing to lose. On an installation that holds data, do not run it.
 
 A public installation serves your own domain on ports 80 and 443 with a
 certificate that browsers trust. Caddy requests the certificate from Let's
-Encrypt on its own and renews it. Do these before the first start:
+Encrypt on its own and renews it. Start with step 1 of the quickstart, then do
+these before the first start:
 
 1. Point the domain's DNS records at the host, and let ports 80 and 443 through
    your firewall. Caddy needs port 80 to prove it controls the domain and to
-   redirect plain HTTP.
+   redirect plain HTTP. With firewalld on Fedora:
+
+   ```bash
+   sudo firewall-cmd --permanent --add-service=http --add-service=https
+   sudo firewall-cmd --reload
+   ```
 
 2. In `.env`, set the domain and the ports. Without the two port lines, the
    defaults are 80 and 443.
@@ -145,14 +163,17 @@ Encrypt on its own and renews it. Do these before the first start:
    ```
 
    Compose mounts that file into the Phyllon container, so you edit the copy in
-   the checkout. On a running installation, a change needs
-   `docker compose up -d --force-recreate phyllon`, because the container reads
-   the file when it is created.
+   the checkout. An editor that replaces the file leaves a running container on
+   the old one, because a single-file bind mount follows the file's inode. So on
+   a running installation, apply a change with
+   `docker compose up -d --force-recreate`, which recreates Caddy as well and so
+   picks up a new domain.
 
 4. Under rootless Podman, allow unprivileged ports from 80. This is the only
-   root step in the whole installation, and it comes from rootless containers,
-   not from Phyllon: every web service under rootless Podman needs it. Docker
-   runs its daemon as root and needs nothing.
+   root step Phyllon itself needs, and it comes from rootless containers, not
+   from Phyllon: every web service under rootless Podman needs it. Installing
+   packages and opening the firewall are host prerequisites outside it. Docker
+   runs its daemon as root and needs no sysctl.
 
    ```bash
    echo 'net.ipv4.ip_unprivileged_port_start=80' |
@@ -160,13 +181,8 @@ Encrypt on its own and renews it. Do these before the first start:
    sudo sysctl --system
    ```
 
-Then continue with the password files and `docker compose up -d --wait` from the
-quickstart.
-
-The proxy container keeps one Linux capability, `NET_BIND_SERVICE`, because the
-`caddy` binary carries it as a file capability and the kernel refuses to start a
-binary whose capability is missing. It allows binding a low port inside the
-container's own network only. You configure nothing for it.
+Then do steps 2 to 5 of the quickstart: the password files, their check, the
+image build and the start. Step 6 then checks the domain instead of `localhost`.
 
 ## Quadlet on Fedora
 
@@ -231,13 +247,13 @@ so the steps above give you the localhost quickstart. A failed first start
 leaves the same trap as under Compose, and the fix is the same, with the
 database volume in place of the Compose volume:
 
-```bash
+````bash
 systemctl --user stop phyllon-proxy.service phyllon.service phyllon-db.service
 podman volume rm systemd-phyllon-db
 systemctl --user start phyllon-proxy.service
-```
-
-**This deletes the database and everything in it.** Do it only on a first start.
+Edit nothing in the shipped units: put your changes in a drop-in, so an update
+of the units does not overwrite them. Quadlet merges every `.conf` file in
+`phyllon-proxy.container.d/` into the unit, in alphabetical order.
 
 ### Quadlet with a public domain
 
@@ -247,7 +263,7 @@ of the units does not overwrite them. Quadlet merges every `.conf` file in
 
 ```bash
 mkdir ~/.config/containers/systemd/phyllon-proxy.container.d
-```
+````
 
 Write `~/.config/containers/systemd/phyllon-proxy.container.d/10-public.conf`:
 
@@ -268,8 +284,8 @@ and 8443 open on the host as well. A later `Environment=` for the same name
 replaces the earlier one.
 
 Then set `public_url = "https://phyllon.example.org"` in
-`~/.config/phyllon/phyllon.toml`, do the root step (step 4 of the public
-installation above), and apply it:
+`~/.config/phyllon/phyllon.toml`, do the DNS and firewall step and the root step
+(steps 1 and 4 of the public installation above), and apply it:
 
 ```bash
 systemctl --user daemon-reload
@@ -295,10 +311,12 @@ With Compose and Traefik:
 2. In `deploy/phyllon.toml`, set `public_url` to the domain, as in the previous
    section.
 
-3. Open `deploy/examples/compose.traefik.yaml` and change the network name
-   `proxy` (twice), the entry point and the certificate resolver to the ones
-   your Traefik uses. The file adds labels and the external network to `phyllon`
-   and removes nothing from `compose.yaml`.
+3. Open `deploy/examples/compose.traefik.yaml` and change the `name:` under
+   `networks.proxy` and the `traefik.docker.network` label to the network your
+   Traefik is attached to. Keep the key `proxy`, which the file uses elsewhere.
+   Also change the entry point and the certificate resolver to the ones your
+   Traefik uses. The file adds labels and the external network to `phyllon` and
+   removes nothing from `compose.yaml`.
 
 4. Start with both files:
 
@@ -306,21 +324,18 @@ With Compose and Traefik:
    docker compose -f compose.yaml -f deploy/examples/compose.traefik.yaml up -d --wait
    ```
 
-Another proxy needs the same three facts: the upstream is `phyllon:8080` on the
-shared network, it speaks plain HTTP, and the proxy must send the domain as the
-`Host` header.
+Another proxy that runs as a container needs the same three facts: the upstream
+is `phyllon:8080` on the shared network, it speaks plain HTTP, and the proxy
+must send the domain as the `Host` header.
 
-With Quadlet, leave out `phyllon-proxy.container` when you copy the units. A
-proxy on the host reaches Phyllon through a port bound to the loopback address
-only. Add `~/.config/containers/systemd/phyllon.container.d/10-local.conf`:
+With Quadlet, do not copy `phyllon-proxy.container` in step 1 of the Quadlet
+section, because its `[Install]` section would start Caddy at boot. Start
+`phyllon.service` instead of the proxy. A proxy that runs as a container joins
+the network `systemd-phyllon-edge` (a `Network=phyllon-edge.network` line in its
+unit) and reaches Phyllon as `phyllon:8080`.
 
-```ini
-[Container]
-PublishPort=127.0.0.1:8080:8080
-```
-
-Start `phyllon.service` instead of the proxy. A proxy that runs as a container
-joins the network `systemd-phyllon-edge` and reaches Phyllon as `phyllon:8080`.
+A proxy installed directly on the host is not covered in phase 1. Phyllon
+publishes no port, so such a proxy has nothing to connect to.
 
 ## Upgrades
 
@@ -353,10 +368,11 @@ A systemd timer runs it daily. Turn it on once the image is published:
 systemctl --user enable --now podman-auto-update.timer
 ```
 
-To move to a new line, change `Image=` in your copy of `phyllon.container`, or
-add a drop-in with `Image=`, then run `systemctl --user daemon-reload` and
-restart the unit. Caddy and PostgreSQL are pinned by digest in both paths. They
-change only when you update the checkout or the units.
+To move to a new line, add a drop-in
+`~/.config/containers/systemd/phyllon.container.d/10-image.conf` with the new
+`Image=` in its `[Container]` section, then run `systemctl --user daemon-reload`
+and restart the unit. Caddy and PostgreSQL are pinned by digest in both paths.
+They change only when you update the checkout or the units.
 
 ## What phase 1 cannot do yet
 
@@ -365,24 +381,32 @@ change only when you update the checkout or the units.
   phase 1. Build the image yourself until then (see below). A section on
   verifying a release's signature and attestation joins this guide with that
   release.
-- **There is nothing to use.** Phyllon serves a start page, the health routes
-  and its assets. It has no sign-in and no learning tasks, and PostgreSQL holds
-  no tables yet. Learning tasks come in later phases (see the
-  [roadmap](roadmap.md)).
+- **There is nothing to use.** Phyllon answers `/healthz` and `/readyz` and
+  nothing else yet: every other path, `/` included, gives a 404 until the web
+  interface arrives in a later release. It has no sign-in and no learning tasks,
+  and PostgreSQL holds no tables yet. Learning tasks come in later phases (see
+  the [roadmap](roadmap.md)).
 
 ### Build the image yourself
 
 This part is temporary. It goes away when the first release is published.
 
-From the checkout, build the image under the name the stack expects:
+From the checkout, build the image under the name the stack expects. With
+Podman:
 
 ```bash
 podman build -t ghcr.io/nemesis398/phyllon:0.1 .
 ```
 
-With Docker, use `docker build` instead. To give the image another name, build
-it under that name and set `PHYLLON_IMAGE` in `.env` to it. The Quadlet unit has
-no variable: edit `Image=` in your copy, or build under the shipped name. A
-local image is used as it is, so nothing is pulled from `ghcr.io`. Do not turn
-on the auto-update timer until the image is published, because the registry has
-no `0.1` to compare with.
+With Docker:
+
+```bash
+docker build -t ghcr.io/nemesis398/phyllon:0.1 .
+```
+
+To give the image another name, build it under that name and set `PHYLLON_IMAGE`
+in `.env` to it. The Quadlet unit has no variable: set `Image=` in a drop-in, or
+build under the shipped name. A local image is used as it is, so nothing is
+pulled from `ghcr.io`. Do not turn on the auto-update timer until the image is
+published, because the registry has no `0.1` to compare with. no `0.1` to
+compare with.
