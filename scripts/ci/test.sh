@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
 # check-signoff.sh, for scripts/github-settings.sh and scripts/posture.sh, and
-# for the image checks of scripts/ci/fedora-vm.sh.
+# for the image checks and the cloud-init seed of scripts/ci/fedora-vm.sh.
 # The title tests call the script with a title; the sign-off tests build a git
 # repository in a temporary directory, make commits with explicit identities
 # and run the script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the
 # test says. The settings tests put a stub gh first on PATH that answers from
 # fixture JSON, so they never reach GitHub, and the posture tests do the same
 # with a stub container engine. The tests of scripts/ci/fedora-vm.sh's trust
-# chain run it with stub gpgv, curl and QEMU, so they need neither the network
-# nor KVM. Run it with:
+# chain and seed run it with stub gpgv, curl, cloud-localds and QEMU, so they
+# need neither the network nor KVM. Run it with:
 #
 #   scripts/ci/test.sh
 #
@@ -1005,7 +1005,8 @@ malformed_inspect_output_is_an_error() {
 # The Fedora VM's trust chain. fedora-vm.sh runs with stubs first on PATH:
 # gpgv writes $FVM_STATUS to its status fd and $FVM_TEXT as the signed text
 # and exits $FVM_GPGV_EXIT; curl copies the file the URL names from
-# $FVM_FIXTURES; qemu-img and cloud-localds create their output file; and
+# $FVM_FIXTURES; qemu-img and cloud-localds create their output file, and
+# cloud-localds keeps a copy of the user-data as $FVM_USERDATA; and
 # qemu-system-x86_64 lists the run directory and exits 1. Each stub logs its
 # call to $FVM_LOG. The real script, with its pinned fingerprint, decides.
 vm_script="$ci_dir/fedora-vm.sh"
@@ -1061,6 +1062,7 @@ cat >"$scratch/vmbin/cloud-localds" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "cloud-localds $*" >>"$FVM_LOG"
+cp -- "$2" "$FVM_USERDATA"
 : >"$1"
 STUB
 cat >"$scratch/vmbin/qemu-system-x86_64" <<'STUB'
@@ -1108,13 +1110,15 @@ new_vm() {
 		"SHA256 ($vm_image) = $vm_sum" >"$vm_dir/text"
 }
 
+# Runs fedora-vm.sh with the options given and the command true.
 run_vm() {
 	status=0
 	: >"$vm_dir/log"
+	rm -f -- "$vm_dir/user-data"
 	out="$(cd "$vm_dir" && PATH="$scratch/vmbin:$PATH" FVM_LOG="$vm_dir/log" \
 		FVM_FIXTURES="$vm_dir/fixtures" FVM_STATUS="$vm_dir/status" \
-		FVM_TEXT="$vm_dir/text" PHYLLON_VM_CACHE=cache \
-		"$vm_script" -- true </dev/null 2>&1)" || status=$?
+		FVM_TEXT="$vm_dir/text" FVM_USERDATA="$vm_dir/user-data" \
+		PHYLLON_VM_CACHE=cache "$vm_script" "$@" -- true </dev/null 2>&1)" || status=$?
 }
 
 # Expects the run to have failed before QEMU and left no run directory.
@@ -1313,6 +1317,70 @@ a_cached_image_altered_later_is_refused() {
 	fi
 }
 
+# Root's work happens at boot, through cloud-init, so the VM user needs no
+# sudo: --package installs a package and --linger keeps the user's systemd
+# running without a login.
+the_seed_installs_packages_and_turns_on_linger() {
+	new_vm
+	# Quoted, so YAML keeps a name such as null a string.
+	run_vm --package docker-compose --package jq --package null --linger
+	[[ -f "$vm_dir/user-data" ]] || {
+		echo "  no seed was built: $out"
+		return 1
+	}
+	local seed
+	seed="$(<"$vm_dir/user-data")"
+	[[ "$seed" == *$'\npackages:\n  - \'docker-compose\'\n  - \'jq\'\n  - \'null\'\n'* ]] || {
+		echo "  the packages are not in the user-data, quoted:"
+		cat "$vm_dir/user-data"
+		return 1
+	}
+	[[ "$seed" == *$'\nruncmd:\n  - [loginctl, enable-linger, phyllon]'* ]] || {
+		echo "  linger is not in the user-data:"
+		cat "$vm_dir/user-data"
+		return 1
+	}
+	if command grep -Eq '^ *(sudo|groups):' "$vm_dir/user-data"; then
+		echo "  the user-data gives the user sudo or groups"
+		return 1
+	fi
+}
+
+# Without the options the seed is the one phase A tested: no packages and
+# no commands as root.
+the_seed_has_no_root_work_by_default() {
+	new_vm
+	run_vm
+	[[ -f "$vm_dir/user-data" ]] || {
+		echo "  no seed was built: $out"
+		return 1
+	}
+	if command grep -Eq '^(packages|runcmd|bootcmd|write_files):' "$vm_dir/user-data"; then
+		echo "  the default user-data does root work:"
+		cat "$vm_dir/user-data"
+		return 1
+	fi
+}
+
+# A name goes into YAML that root acts on, so anything but a plain package
+# name is refused before anything is downloaded or built.
+a_package_name_that_is_not_plain_is_refused() {
+	local name
+	for name in "" "-y" "jq evil" $'jq\n  - evil' "jq]" "jq#x" "jq'" "../jq"; do
+		new_vm
+		run_vm --package "$name"
+		expect_refused "is not a package name"
+		if [[ -e "$vm_dir/user-data" ]] || command grep -q '^curl' "$vm_dir/log"; then
+			echo "  the run went on after the name '$name'"
+			return 1
+		fi
+	done
+	# A missing name must not swallow the separator.
+	new_vm
+	run_vm --package
+	expect_refused "'--' is not a package name"
+}
+
 tests=(
 	a_title_with_a_scope_passes
 	a_dependabot_cargo_title_passes
@@ -1398,6 +1466,9 @@ tests=(
 	a_near_miss_file_name_is_refused
 	a_verified_image_reaches_qemu
 	a_cached_image_altered_later_is_refused
+	the_seed_installs_packages_and_turns_on_linger
+	the_seed_has_no_root_work_by_default
+	a_package_name_that_is_not_plain_is_refused
 )
 
 failed=0

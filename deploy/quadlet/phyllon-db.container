@@ -1,0 +1,57 @@
+# PostgreSQL with pgvector, for rootless Podman under systemd. The units go to
+# ~/.config/containers/systemd/, the files they mount to ~/.config/phyllon/,
+# and the three passwords are Podman secrets (see docs/install.md). The
+# hardening matches compose.yaml, and scripts/quadlet-test.sh checks it with
+# scripts/posture.sh.
+
+[Unit]
+Description=Phyllon's PostgreSQL
+
+[Container]
+ContainerName=phyllon-db
+Image=docker.io/pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+User=999
+Group=999
+ReadOnly=true
+# ReadOnlyTmpfs, on by default, puts a tmpfs on /tmp and /run. The socket
+# directory is /var/run/postgresql, a link into /run.
+Tmpfs=/run/postgresql
+DropCapability=ALL
+NoNewPrivileges=true
+Memory=1g
+PidsLimit=256
+Environment=POSTGRES_DB=phyllon
+Environment=POSTGRES_PASSWORD_FILE=/run/secrets/db_superuser_password
+Environment="POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+Volume=phyllon-db.volume:/var/lib/postgresql
+# Runs once, when the volume is new, and reads the other two passwords.
+Volume=%h/.config/phyllon/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro,Z
+# Each secret is a file only PostgreSQL's user may read.
+Secret=phyllon-db-superuser-password,type=mount,uid=999,gid=999,mode=0400,target=db_superuser_password
+Secret=phyllon-db-owner-password,type=mount,uid=999,gid=999,mode=0400,target=db_owner_password
+Secret=phyllon-db-runtime-password,type=mount,uid=999,gid=999,mode=0400,target=db_runtime_password
+Network=phyllon-db.network
+# The host name phyllon.toml names.
+NetworkAlias=db
+# Over TCP, because the server initdb starts first listens only on its
+# socket, and it must not count as ready.
+HealthCmd=["pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=60s
+# Until the first success the check runs every 2 s, like compose's
+# start_interval, so a start does not wait a whole interval.
+HealthStartupCmd=["pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]
+HealthStartupInterval=2s
+# The service counts as started once the container is healthy, so Phyllon
+# starts after a database that answers.
+Notify=healthy
+
+[Service]
+Restart=always
+# Covers the first pull and the first initdb.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

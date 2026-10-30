@@ -1,0 +1,2 @@
+# Caddy's certificates and keys. Podman names it systemd-phyllon-caddy.
+[Volume]

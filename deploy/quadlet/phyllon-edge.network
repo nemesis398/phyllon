@@ -1,0 +1,2 @@
+# The network Caddy reaches Phyllon on. Podman names it systemd-phyllon-edge.
+[Network]

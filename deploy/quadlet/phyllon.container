@@ -1,0 +1,49 @@
+# Phyllon, for rootless Podman under systemd. It starts once phyllon-db is
+# healthy, and phyllon-proxy once it is. The hardening matches compose.yaml.
+
+[Unit]
+Description=Phyllon
+# Requires=, unlike the proxy's Wants=: Phyllon is restarted along with its
+# database, whose image is pinned by digest, so auto-update never restarts it.
+Requires=phyllon-db.service
+After=phyllon-db.service
+
+[Container]
+ContainerName=phyllon
+# The minor line rather than a digest, so podman auto-update follows patch
+# releases and never crosses a database migration.
+Image=ghcr.io/nemesis398/phyllon:0.1
+AutoUpdate=registry
+User=65532
+Group=65532
+ReadOnly=true
+# ReadOnlyTmpfs, on by default, puts a tmpfs on /tmp and /run.
+DropCapability=ALL
+NoNewPrivileges=true
+Memory=512m
+PidsLimit=256
+Environment=PHYLLON_CONFIG=/etc/phyllon/phyllon.toml
+Volume=%h/.config/phyllon/phyllon.toml:/etc/phyllon/phyllon.toml:ro,Z
+# Only the runtime role's password, readable only by Phyllon's user.
+Secret=phyllon-db-runtime-password,type=mount,uid=65532,gid=65532,mode=0400,target=db_runtime_password
+Network=phyllon-edge.network
+Network=phyllon-db.network
+# The image has no shell, so the command is a JSON array, which Podman runs
+# without one.
+HealthCmd=["/usr/local/bin/phyllon", "healthcheck"]
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=30s
+# Until the first success the check runs every 2 s, like compose's
+# start_interval, so a start does not wait a whole interval.
+HealthStartupCmd=["/usr/local/bin/phyllon", "healthcheck"]
+HealthStartupInterval=2s
+Notify=healthy
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
