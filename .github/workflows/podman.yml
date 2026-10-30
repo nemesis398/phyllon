@@ -65,8 +65,10 @@ jobs:
           sudo apt-get install -q -y --no-install-recommends \
             qemu-system-x86 qemu-utils cloud-image-utils
           qemu-system-x86_64 --version
-      # The same build as ci.yml's stack-docker job. docker save writes the
-      # archive format podman save writes by default, which podman load reads.
+      # The same build as ci.yml's stack-docker job. With Docker's classic
+      # image store, docker save writes the docker-archive format podman save
+      # writes by default; with the containerd store it writes an OCI layout.
+      # podman load reads both.
       - name: Build the image
         run: |
           docker build --build-arg PHYLLON_GIT_COMMIT --tag localhost/phyllon:ci .

@@ -63,8 +63,12 @@ check.
 - The checks need root in the VM only for setup, which cloud-init does at boot:
   it installs Fedora's `docker-compose`, which `podman compose` runs, and `jq`,
   and turns on linger for the VM user, who has no sudo. On the laptop this
-  raised the time until the VM is ready from 12.6 s to between 24.7 s and 37.0 s
-  over five boots, because dnf fetches the repository metadata first.
+  raised the time until the VM is ready from 12.6 s to between 23.9 s and 37.0 s
+  over seven boots, because dnf fetches the repository metadata first.
+- On the laptop, the finished job's VM step, which boots the VM and runs
+  `scripts/stack-test.sh podman` and `scripts/quadlet-test.sh`, took 78 s with
+  the Fedora image cached.
+- The CI time of the finished job is still to be measured.
 - The job depends on GitHub keeping `/dev/kvm` on its hosted runners and on
   Fedora's mirrors. If a run goes past 15 minutes, or the job turns flaky, write
   a new record and revisit option 2.
