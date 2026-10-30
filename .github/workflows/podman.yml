@@ -1,8 +1,11 @@
-# Boots a Fedora Cloud VM under KVM and checks that it runs SELinux enforcing
-# and rootless Podman, because GitHub's Ubuntu runners have no SELinux. This is
-# the first step of Task 13: the stack and the Quadlet units follow once the
-# timings show whether pull requests can afford the VM. It is not a required
-# check.
+# Runs the stack in a Fedora Cloud VM under KVM with SELinux enforcing,
+# because GitHub's Ubuntu runners have no SELinux: first under rootless podman
+# compose (scripts/stack-test.sh podman), then as the Quadlet units under the VM
+# user's systemd (scripts/quadlet-test.sh), each ending with
+# scripts/posture.sh. The image is built from the checkout and loaded in the VM
+# under the name compose and the Quadlet unit use, so nothing is pulled for it.
+# docs/decisions/0005-podman-ci.md records why pull requests can afford the VM.
+# It is not a required check.
 #
 # Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
@@ -12,15 +15,25 @@ on:
   pull_request:
     paths:
       - "compose*.yaml"
+      - ".env.example"
       - "deploy/**"
       - "Dockerfile"
+      - "scripts/posture.sh"
+      - "scripts/stack-checks.sh"
+      - "scripts/stack-test.sh"
+      - "scripts/quadlet-test.sh"
       - "scripts/ci/fedora-vm.sh"
       - ".github/workflows/podman.yml"
+  # Every night as well, on main: the VM installs Fedora's current
+  # docker-compose, and the image is built from every change, also from those
+  # the paths above leave out.
+  schedule:
+    - cron: "47 3 * * *"
 
 permissions: {}
 
 concurrency:
-  group: podman-${{ github.event.pull_request.number }}
+  group: podman-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -52,15 +65,39 @@ jobs:
           sudo apt-get install -q -y --no-install-recommends \
             qemu-system-x86 qemu-utils cloud-image-utils
           qemu-system-x86_64 --version
-      # fedora-vm.sh downloads and verifies the image, so the time includes
-      # the download.
-      - name: SELinux and Podman in the Fedora VM
+      # The same build as ci.yml's stack-docker job. docker save writes the
+      # archive format podman save writes by default, which podman load reads.
+      - name: Build the image
+        run: |
+          docker build --build-arg PHYLLON_GIT_COMMIT --tag localhost/phyllon:ci .
+          mkdir -p -- "$RUNNER_TEMP/vm/phyllon"
+          docker save --output "$RUNNER_TEMP/vm/phyllon-image.tar" localhost/phyllon:ci
+          cp -R -- compose.yaml .env.example deploy scripts "$RUNNER_TEMP/vm/phyllon/"
+        env:
+          PHYLLON_GIT_COMMIT: ${{ github.sha }}
+      # The VM user has no sudo: cloud-init installs Fedora's docker-compose,
+      # which podman compose runs, and jq for posture.sh, and turns on linger
+      # for the user's systemd. The image gets the name compose's .env.example
+      # and the Quadlet unit use. fedora-vm.sh downloads and verifies the
+      # Fedora image, so the time includes that download.
+      - name: The stack and the Quadlet units in the Fedora VM
         run: |
           start=$SECONDS
           status=0
           # shellcheck disable=SC2016 # the VM's shell expands it
-          scripts/ci/fedora-vm.sh -- sh -c \
-            'mode=$(getenforce) && echo "SELinux: $mode" && test "$mode" = Enforcing && podman info' ||
-            status=$?
+          scripts/ci/fedora-vm.sh --package docker-compose --package jq --linger \
+            --copy "$RUNNER_TEMP/vm/phyllon" --copy "$RUNNER_TEMP/vm/phyllon-image.tar" -- \
+            bash -c '
+              set -euo pipefail
+              mode=$(getenforce)
+              echo "SELinux: $mode"
+              test "$mode" = Enforcing
+              podman load --quiet --input phyllon-image.tar
+              podman tag localhost/phyllon:ci ghcr.io/nemesis398/phyllon:0.1
+              systemctl --user start podman.socket
+              cd phyllon
+              scripts/stack-test.sh podman
+              scripts/quadlet-test.sh
+            ' </dev/null || status=$?
           echo "The VM part took $((SECONDS - start)) s and exited $status."
           exit "$status"
