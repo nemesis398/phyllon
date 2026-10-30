@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="{{ strings::LANGUAGE }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>{% block title %}{{ strings::SITE_NAME }}{% endblock %}</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/palette.css" />
+    <link rel="stylesheet" href="/assets/phyllon.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <picture>
+          <source
+            media="(prefers-color-scheme: dark)"
+            srcset="/assets/logo-dark.svg"
+          />
+          <img
+            class="brand-mark"
+            src="/assets/logo.svg"
+            alt=""
+            width="40"
+            height="40"
+          />
+        </picture>
+        <span class="wordmark">{{ strings::SITE_NAME }}</span>
+      </a>
+    </header>
+    <main>{% block content %}{% endblock %}</main>
+    <footer class="site-footer">
+      {%- if let Some(source) = shell.source %}
+      <span>{{ strings::VERSION_LABEL }} {{ source.version }}</span>
+      {%- endif %}
+      <span>{{ strings::LICENSE }}</span>
+      {%- if let Some(source) = shell.source %}
+      <a href="{{ source.url }}">{{ strings::SOURCE_LINK }}</a>
+      {%- endif %}
+    </footer>
+  </body>
+</html>
