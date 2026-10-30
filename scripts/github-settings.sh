@@ -47,10 +47,12 @@ expected="$(jq -n '{
 	# The four switches: PUT turns one on and DELETE off. GET answers
 	# {"enabled": ...}, except that GET /vulnerability-alerts (Dependabot
 	# alerts) answers 204 when on, and each of the last three answers 404 when
-	# off. Alerts come before security updates, which need them.
+	# off. Alerts come before security updates, which need them. Dependabot
+	# pauses security updates when its pull requests go ignored; PUT takes no
+	# body, so apply cannot clear a pause, but audit shows it.
 	"private-vulnerability-reporting": {enabled: true},
 	"vulnerability-alerts": {enabled: true},
-	"automated-security-fixes": {enabled: true},
+	"automated-security-fixes": {enabled: true, paused: false},
 	"immutable-releases": {enabled: true},
 	# CodeQL default setup: GET and PATCH. PATCH answers 202 and sets it up in
 	# the background, so an audit right after apply may still see it pending.
@@ -125,6 +127,17 @@ get() {
 	fi
 }
 
+# Prints the repository's own rulesets as a JSON array. Anything else, a 404
+# included, ends the script, because without the list apply would create a
+# second ruleset.
+rulesets() {
+	local list
+	list="$(get "rulesets?includes_parents=false")"
+	jq -e 'type == "array"' <<<"$list" >/dev/null ||
+		fail "GET repos/$repo/rulesets returned no list: ${list:0:200}"
+	printf '%s\n' "$list"
+}
+
 # Sends $1 to /repos/{owner}/{repo}/$2, with the body $3 if given.
 write() {
 	local path="repos/$repo${2:+/$2}" input=()
@@ -148,14 +161,14 @@ read_live() {
 	done < <(jq -r 'keys_unsorted[] | select(. != "rulesets")' <<<"$expected")
 	# The full ruleset for each name in the table, the summary for the others.
 	live="$(jq '.rulesets = []' <<<"$live")"
-	body="$(get "rulesets?includes_parents=false")"
+	body="$(rulesets)"
 	while IFS= read -r summary; do
 		if jq -e --argjson s "$summary" 'any(.rulesets[]; .name == $s.name)' \
 			<<<"$expected" >/dev/null; then
 			summary="$(get "rulesets/$(jq -r .id <<<"$summary")")"
 		fi
 		live="$(jq --argjson s "$summary" '.rulesets += [$s]' <<<"$live")"
-	done < <(jq -c '.[]?' <<<"$body")
+	done < <(jq -c '.[]' <<<"$body")
 }
 
 audit() {
@@ -215,6 +228,8 @@ audit() {
 
 apply() {
 	local key body list id
+	# Read the ruleset list first, so a failure stops apply before any write.
+	list="$(rulesets)"
 	while IFS= read -r key; do
 		body="$(jq -c --arg k "$key" '.[$k]' <<<"$expected")"
 		if [[ "$toggles" == *" $key "* ]]; then
@@ -230,10 +245,9 @@ apply() {
 		fi
 	done < <(jq -r 'keys_unsorted[] | select(. != "rulesets")' <<<"$expected")
 	# Update a ruleset by name, so a second run never creates a second one.
-	list="$(get "rulesets?includes_parents=false")"
 	while IFS= read -r body; do
 		id="$(jq -r --argjson b "$body" \
-			'first(.[]? | select(.name == $b.name) | .id) // empty' <<<"$list")"
+			'first(.[] | select(.name == $b.name) | .id) // empty' <<<"$list")"
 		if [[ -n "$id" ]]; then
 			write PUT "rulesets/$id" "$body"
 		else

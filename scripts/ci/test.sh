@@ -380,7 +380,7 @@ an_unknown_base_fails() {
 # with / turned into _ ("repo" for the repository itself). A missing file
 # answers 404 the way gh does, an empty one 204. Every call is logged to
 # $fixtures/calls. A write fails unless GH_STUB_WRITES is set, and
-# GH_STUB_FAIL=NAME makes that request fail with HTTP 500.
+# GH_STUB_FAIL=NAME makes a request to NAME, read or write, fail with HTTP 500.
 mkdir "$scratch/bin"
 cat >"$scratch/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -400,14 +400,17 @@ done
 echo "$method $path" >>"$GH_FIXTURES/calls"
 name="${path#repos/nemesis398/phyllon}" name="${name%%\?*}" name="${name#/}"
 name="${name//\//_}" name="${name:-repo}"
-if [[ "$method" != GET ]]; then
-	[[ -n "${GH_STUB_WRITES:-}" ]] || { echo "stub gh: $method $path" >&2; exit 3; }
-	[[ "$input" != - ]] || cat >"$GH_FIXTURES/body-$name"
-	exit 0
+if [[ "$method" != GET && -z "${GH_STUB_WRITES:-}" ]]; then
+	echo "stub gh: $method $path" >&2
+	exit 3
 fi
 if [[ "${GH_STUB_FAIL:-}" == "$name" ]]; then
 	echo "gh: Server Error (HTTP 500)" >&2
 	exit 1
+fi
+if [[ "$method" != GET ]]; then
+	[[ "$input" != - ]] || cat >"$GH_FIXTURES/body-$name"
+	exit 0
 fi
 if [[ ! -f "$GH_FIXTURES/$name.json" ]]; then
 	echo '{"message":"Not Found","status":"404"}'
@@ -529,6 +532,13 @@ security_settings_that_differ_fail() {
 	expect_out 'drift: code-scanning/default-setup .state: is "not-configured", want "configured"'
 }
 
+# Dependabot pauses its security updates when its pull requests go ignored.
+paused_security_updates_fail() {
+	new_fixtures
+	edit_fixture automated-security-fixes '.paused = true'
+	expect_drift "drift: automated-security-fixes .paused: is true, want false"
+}
+
 # These endpoints answer 404 when the feature is off.
 a_feature_that_answers_404_is_off() {
 	new_fixtures
@@ -639,6 +649,33 @@ PUT $p/rulesets/42" ]] || {
 	jq -e '.homepage == "https://phyllon.de"' "$fixtures/body-repo" >/dev/null
 }
 
+# A failed write stops apply, so nothing after it runs on a half-set repository.
+a_failed_write_stops_apply() {
+	new_fixtures
+	GH_STUB_WRITES=1 GH_STUB_FAIL=topics run_settings apply
+	expect_status 2
+	expect_out "PUT repos/nemesis398/phyllon/topics failed"
+	out="$(command grep -v '^GET ' "$fixtures/calls")"
+	[[ "$out" == $'PATCH repos/nemesis398/phyllon\nPUT repos/nemesis398/phyllon/topics' ]] || {
+		echo "  unexpected writes: $out"
+		return 1
+	}
+}
+
+# Without the list, apply cannot know whether the ruleset exists, and a POST
+# could create a second one. It stops before it writes anything.
+an_unreadable_ruleset_list_stops_apply() {
+	new_fixtures
+	rm -- "$fixtures/rulesets.json"
+	GH_STUB_WRITES=1 run_settings apply
+	expect_status 2
+	expect_out "rulesets"
+	if command grep -v '^GET ' "$fixtures/calls"; then
+		echo "  apply wrote without the ruleset list"
+		return 1
+	fi
+}
+
 apply_creates_a_missing_ruleset() {
 	new_fixtures
 	echo '[]' >"$fixtures/rulesets.json"
@@ -682,6 +719,7 @@ tests=(
 	the_audit_passes_when_every_setting_matches_and_only_reads
 	repository_flags_that_differ_fail
 	security_settings_that_differ_fail
+	paused_security_updates_fail
 	a_feature_that_answers_404_is_off
 	actions_permissions_that_differ_fail
 	a_missing_ruleset_fails
@@ -695,6 +733,8 @@ tests=(
 	an_unknown_command_fails
 	apply_writes_every_setting_and_updates_the_ruleset
 	apply_creates_a_missing_ruleset
+	a_failed_write_stops_apply
+	an_unreadable_ruleset_list_stops_apply
 )
 
 failed=0
