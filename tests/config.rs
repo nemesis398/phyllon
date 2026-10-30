@@ -242,6 +242,10 @@ fn real_syntax_errors_keep_their_description() {
             "invalid offset, expected `Z`, +OFFSET, -OFFSET (line 1, column 8)",
         ),
         (
+            "when = 1979-02-30\n",
+            "invalid date, expected day between 01 and 28 (line 1, column 8)",
+        ),
+        (
             "when = 07:3\n",
             "invalid time, expected a two-digit minute (MM) (line 1, column 8)",
         ),

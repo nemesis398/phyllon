@@ -219,7 +219,7 @@ const TOML_TYPES: [&str; 7] = [
 /// Every item after `, expected ` in a syntax message: `toml_parser`'s
 /// `Expected` items as `toml` renders them, and `toml_datetime`'s
 /// expectations, whose `` `Z`, +OFFSET, -OFFSET `` is listed in three parts.
-const SYNTAX_EXPECTED: [&str; 74] = [
+const SYNTAX_EXPECTED: [&str; 78] = [
     "nothing",
     "newline",
     "`#`",
@@ -274,6 +274,10 @@ const SYNTAX_EXPECTED: [&str; 74] = [
     "a two-digit month (MM)",
     "a two-digit second (SS)",
     "day",
+    "day between 01 and 28",
+    "day between 01 and 29",
+    "day between 01 and 30",
+    "day between 01 and 31",
     "`:` (HH:MM)",
     "hour",
     "hour between 00 and 23",
