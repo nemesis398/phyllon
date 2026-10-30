@@ -5,9 +5,8 @@ tool runs it. They are short on purpose. Hooks and CI enforce the ones that
 matter most, because an instruction file alone does not reliably change what an
 agent does.
 
-The gate script, the hooks, CI, `docs/map.md` and the skills under
-`.agents/skills/` named below arrive later in phase 1, so some of them do not
-exist yet.
+`docs/map.md` and the skills under `.agents/skills/` named below arrive later in
+phase 1, so they do not exist yet.
 
 ## Rules
 

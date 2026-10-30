@@ -1,6 +1,7 @@
 # CI for every pull request and every push to main. Every job is a required
 # check: the branch ruleset names each job, so a renamed or added job changes
-# scripts/github-settings.sh too.
+# scripts/github-settings.sh too. The pr-title check lives in pr-title.yml,
+# because it also runs when the title is edited.
 #
 # Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
@@ -8,15 +9,16 @@ name: CI
 
 on:
   pull_request:
-    # edited: the title becomes the squash commit, so a new title is checked.
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
 permissions: {}
 
+# A new push to a pull request cancels the run for the old one. Each push to
+# main gets its own group, because GitHub would replace a waiting run in a
+# shared group, and that commit would go without CI.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -44,6 +46,7 @@ jobs:
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-nextest@0.9.149,cargo-shear@1.14.0,cargo-deny@0.20.2
+          fallback: none
       - run: scripts/check.sh
       - run: cargo deny check advisories
       - run: cargo doc --no-deps --locked
@@ -91,23 +94,10 @@ jobs:
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-nextest@0.9.149
+          fallback: none
       # The tests that need PostgreSQL are the ignored ones. None exists until
       # Task 9, which removes --no-tests=pass.
       - run: cargo nextest run --locked --run-ignored only --no-tests=pass
-
-  pr-title:
-    name: pr-title
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: scripts/ci/check-pr-title.sh "$TITLE"
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
 
   sign-off:
     name: sign-off
@@ -120,10 +110,37 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - run: scripts/ci/check-signoff.sh "$BASE_SHA" "$HEAD_SHA"
+      # fetch-depth: 0 fetches every branch as origin/<branch>, so the range
+      # starts at the base branch as it is now; the event's base.sha can be
+      # stale. PR_AUTHOR comes from GitHub, not from the commits, so it is
+      # what the Dependabot exemption trusts.
+      - run: scripts/ci/check-signoff.sh "origin/$BASE_REF" "$HEAD_SHA"
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+
+  # Fails on a new or bumped dependency with a known vulnerability of any
+  # severity, or with a license outside deny.toml's allowlist. It reads
+  # GitHub's dependency graph, which public repositories have.
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          # The same list as [licenses] allow in deny.toml.
+          allow-licenses: >-
+            MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause,
+            BSD-3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0, CC0-1.0,
+            AGPL-3.0-or-later
 
   markdown:
     name: markdown
@@ -158,6 +175,7 @@ jobs:
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: shellcheck@0.11.0
+          fallback: none
       - name: shellcheck
         run: |
           shellcheck --version | grep -Fx 'version: 0.11.0'

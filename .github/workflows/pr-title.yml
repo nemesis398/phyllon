@@ -1,0 +1,32 @@
+# Checks the pull request title, which the squash merge turns into the commit
+# on main. It has its own workflow because it also runs when the title is
+# edited, and an edit should not rerun all of CI. The job name pr-title is a
+# required check in the branch ruleset (scripts/github-settings.sh).
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/check-pr-title.sh "$TITLE"
+        env:
+          TITLE: ${{ github.event.pull_request.title }}

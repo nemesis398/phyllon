@@ -2,7 +2,8 @@
 # Tests for the two pull request checks CI runs: check-pr-title.sh and
 # check-signoff.sh. The title tests call the script with a title; the sign-off
 # tests build a git repository in a temporary directory, make commits with
-# explicit identities and run the script inside it. Run it with:
+# explicit identities and run the script inside it, with PR_AUTHOR and
+# GITHUB_ACTIONS set as the test says. Run it with:
 #
 #   scripts/ci/test.sh
 #
@@ -19,6 +20,8 @@ signoff_check="$ci_dir/check-signoff.sh"
 # Keep the user's git configuration (signing, hooks, templates) out of the
 # temporary repositories.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# CI sets these for the job; each test sets its own.
+unset PR_AUTHOR GITHUB_ACTIONS
 
 scratch="$(mktemp -d -p "${TMPDIR:-/tmp}" phyllon-ci-tests.XXXXXX)"
 trap 'rm -rf -- "$scratch"' EXIT
@@ -27,6 +30,9 @@ trap 'rm -rf -- "$scratch"' EXIT
 repo=""
 status=0
 out=""
+# The pull request's author and whether the check runs in CI, for run_signoff.
+pr_author=""
+in_ci=""
 
 # The identity Dependabot commits with.
 bot_name='dependabot[bot]'
@@ -55,10 +61,12 @@ commit_as() {
 		git -C "$repo" commit -q --allow-empty -m "$message"
 }
 
-# Runs the sign-off check inside $repo for $1..$2.
+# Runs the sign-off check inside $repo for $1..$2, as a pull request by
+# $pr_author, in CI if $in_ci is true.
 run_signoff() {
 	status=0
-	out="$(cd "$repo" && "$signoff_check" "$1" "$2" 2>&1)" || status=$?
+	out="$(cd "$repo" && PR_AUTHOR="$pr_author" GITHUB_ACTIONS="$in_ci" \
+		"$signoff_check" "$1" "$2" 2>&1)" || status=$?
 }
 
 rev() {
@@ -241,13 +249,51 @@ More text after it."
 	expect_status 1
 }
 
-a_dependabot_commit_passes_without_a_signoff() {
+a_bot_commit_in_a_bot_pull_request_passes() {
+	new_repo
+	local base
+	base="$(rev HEAD)"
+	commit_as "$bot_name" "$bot_email" "build(deps): bump axum from 0.8.4 to 0.8.5" ""
+	pr_author="$bot_name" in_ci=true
+	run_signoff "$base" "$(rev HEAD)"
+	expect_status 0
+}
+
+# Anyone can write Dependabot's identity into a commit; only GitHub decides
+# who opened the pull request.
+a_forged_bot_commit_in_a_human_pull_request_fails() {
+	new_repo
+	local base
+	base="$(rev HEAD)"
+	commit_as "$bot_name" "$bot_email" "build(deps): bump axum from 0.8.4 to 0.8.5" ""
+	pr_author=nemesis398 in_ci=true
+	run_signoff "$base" "$(rev HEAD)"
+	expect_status 1
+	expect_out "$(rev HEAD)"
+}
+
+a_bot_commit_without_a_pull_request_author_fails() {
 	new_repo
 	local base
 	base="$(rev HEAD)"
 	commit_as "$bot_name" "$bot_email" "build(deps): bump axum from 0.8.4 to 0.8.5" ""
 	run_signoff "$base" "$(rev HEAD)"
-	expect_status 0
+	expect_status 1
+}
+
+a_human_commit_in_a_bot_pull_request_needs_a_signoff() {
+	new_repo
+	local base bot human
+	base="$(rev HEAD)"
+	commit_as "$bot_name" "$bot_email" "build(deps): bump axum from 0.8.4 to 0.8.5" ""
+	bot="$(rev HEAD)"
+	commit_as "Ada Lovelace" ada@example.com "fix: adapt to axum 0.8.5" ""
+	human="$(rev HEAD)"
+	pr_author="$bot_name" in_ci=true
+	run_signoff "$base" "$human"
+	expect_status 1
+	expect_out "$human"
+	expect_no_out "$bot"
 }
 
 # Only Dependabot's own identity is exempt, not anyone who takes its name.
@@ -256,8 +302,22 @@ the_dependabot_name_with_another_email_fails() {
 	local base
 	base="$(rev HEAD)"
 	commit_as "$bot_name" someone@example.com "feat: one" ""
+	pr_author="$bot_name" in_ci=true
 	run_signoff "$base" "$(rev HEAD)"
 	expect_status 1
+}
+
+# In CI a missing author would silently drop the exemption check's input.
+a_missing_pull_request_author_in_ci_fails() {
+	new_repo
+	local base
+	base="$(rev HEAD)"
+	commit_as "Ada Lovelace" ada@example.com "feat: one" \
+		"Signed-off-by: Ada Lovelace <ada@example.com>"
+	in_ci=true
+	run_signoff "$base" "$(rev HEAD)"
+	expect_status 2
+	expect_out "PR_AUTHOR"
 }
 
 # A merge commit is skipped, but the commits it brings in are checked.
@@ -297,6 +357,14 @@ a_signed_branch_with_an_unsigned_merge_passes() {
 	expect_status 0
 }
 
+# A pull request always has a commit, so an empty range means a wrong BASE.
+an_empty_range_fails() {
+	new_repo
+	run_signoff "$(rev HEAD)" "$(rev HEAD)"
+	expect_status 1
+	expect_out "no commits"
+}
+
 an_unknown_base_fails() {
 	new_repo
 	run_signoff 0000000000000000000000000000000000000000 "$(rev HEAD)"
@@ -324,10 +392,15 @@ tests=(
 	a_signoff_with_another_email_fails
 	a_matching_signoff_among_several_passes
 	a_signoff_outside_the_trailers_fails
-	a_dependabot_commit_passes_without_a_signoff
+	a_bot_commit_in_a_bot_pull_request_passes
+	a_forged_bot_commit_in_a_human_pull_request_fails
+	a_bot_commit_without_a_pull_request_author_fails
+	a_human_commit_in_a_bot_pull_request_needs_a_signoff
 	the_dependabot_name_with_another_email_fails
+	a_missing_pull_request_author_in_ci_fails
 	a_merge_commit_is_skipped_and_its_commits_are_checked
 	a_signed_branch_with_an_unsigned_merge_passes
+	an_empty_range_fails
 	an_unknown_base_fails
 )
 
