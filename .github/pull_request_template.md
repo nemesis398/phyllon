@@ -11,6 +11,11 @@
       the sign-off, reviewed the change, and the agent has a `Co-Authored-By:`
       trailer.
 
+## Tests
+
+- [ ] New or changed behavior has tests that failed before the change.
+- [ ] A bug fix has a test that reproduces the bug.
+
 ## What ran
 
 <!-- The gate (`scripts/check.sh`), the tests, anything you tried by hand.
