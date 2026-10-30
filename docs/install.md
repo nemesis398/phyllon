@@ -166,8 +166,8 @@ these before the first start:
    the checkout. An editor that replaces the file leaves a running container on
    the old one, because a single-file bind mount follows the file's inode. So on
    a running installation, apply a change with
-   `docker compose up -d --force-recreate`, which recreates Caddy as well and so
-   picks up a new domain.
+   `docker compose up -d --force-recreate phyllon proxy`, which recreates Caddy
+   as well and so picks up a new domain.
 
 4. Under rootless Podman, allow unprivileged ports from 80. This is the only
    root step Phyllon itself needs, and it comes from rootless containers, not
@@ -247,13 +247,13 @@ so the steps above give you the localhost quickstart. A failed first start
 leaves the same trap as under Compose, and the fix is the same, with the
 database volume in place of the Compose volume:
 
-````bash
+```bash
 systemctl --user stop phyllon-proxy.service phyllon.service phyllon-db.service
 podman volume rm systemd-phyllon-db
 systemctl --user start phyllon-proxy.service
-Edit nothing in the shipped units: put your changes in a drop-in, so an update
-of the units does not overwrite them. Quadlet merges every `.conf` file in
-`phyllon-proxy.container.d/` into the unit, in alphabetical order.
+```
+
+**This deletes the database and everything in it.** Do it only on a first start.
 
 ### Quadlet with a public domain
 
@@ -263,7 +263,7 @@ of the units does not overwrite them. Quadlet merges every `.conf` file in
 
 ```bash
 mkdir ~/.config/containers/systemd/phyllon-proxy.container.d
-````
+```
 
 Write `~/.config/containers/systemd/phyllon-proxy.container.d/10-public.conf`:
 
@@ -328,11 +328,20 @@ Another proxy that runs as a container needs the same three facts: the upstream
 is `phyllon:8080` on the shared network, it speaks plain HTTP, and the proxy
 must send the domain as the `Host` header.
 
-With Quadlet, do not copy `phyllon-proxy.container` in step 1 of the Quadlet
-section, because its `[Install]` section would start Caddy at boot. Start
-`phyllon.service` instead of the proxy. A proxy that runs as a container joins
-the network `systemd-phyllon-edge` (a `Network=phyllon-edge.network` line in its
-unit) and reaches Phyllon as `phyllon:8080`.
+With Quadlet, copy every unit but `phyllon-proxy.container` in step 1 of the
+Quadlet section, because its `[Install]` section would start Caddy at boot:
+
+```bash
+cp deploy/quadlet/phyllon-db.* deploy/quadlet/phyllon-edge.network \
+  deploy/quadlet/phyllon.container \
+  ~/.config/containers/systemd/
+```
+
+Start `phyllon.service` instead of the proxy, and check it with
+`systemctl --user status phyllon.service`, since there is no Caddy to curl
+through. A proxy that runs as a container joins the network
+`systemd-phyllon-edge` (a `Network=phyllon-edge.network` line in its unit) and
+reaches Phyllon as `phyllon:8080`.
 
 A proxy installed directly on the host is not covered in phase 1. Phyllon
 publishes no port, so such a proxy has nothing to connect to.
@@ -408,5 +417,4 @@ To give the image another name, build it under that name and set `PHYLLON_IMAGE`
 in `.env` to it. The Quadlet unit has no variable: set `Image=` in a drop-in, or
 build under the shipped name. A local image is used as it is, so nothing is
 pulled from `ghcr.io`. Do not turn on the auto-update timer until the image is
-published, because the registry has no `0.1` to compare with. no `0.1` to
-compare with.
+published, because the registry has no `0.1` to compare with.
