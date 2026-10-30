@@ -691,7 +691,8 @@ apply_creates_a_missing_ruleset() {
 
 # Container posture. The stub engine, linked as docker and as podman, answers
 # `ps` with the Ids of $POSTURE_FIXTURE when the filter names the project
-# phyllon-stack-test, and `inspect` with the whole file. The fixtures are real
+# phyllon-stack-test (or with $POSTURE_IDS when set), and `inspect` with the
+# whole file. The fixtures are real
 # inspect output of the stack, cut to the fields posture.sh reads: Docker
 # writes CapDrop as given and the Name with a slash, Podman expands CapDrop to
 # the dropped capabilities and lists what is left in BoundingCaps.
@@ -701,6 +702,7 @@ set -euo pipefail
 case "${1:-}" in
 ps)
 	[[ " $* " == *" label=com.docker.compose.project=phyllon-stack-test "* ]] || exit 0
+	if [[ -n "${POSTURE_IDS:-}" ]]; then echo "$POSTURE_IDS"; exit 0; fi
 	jq -r '.[].Id' "$POSTURE_FIXTURE"
 	;;
 inspect) cat "$POSTURE_FIXTURE" ;;
@@ -716,7 +718,8 @@ cat >"$scratch/posture-docker.json" <<'JSON'
 [{"Id": "a1", "Name": "/phyllon-stack-test-proxy-1",
   "Config": {"User": "65533:65533", "Labels": {"com.docker.compose.service": "proxy"},
    "Healthcheck": {"Test": ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_edge",
+  "HostConfig": {"Privileged": false, "PidMode": "", "IpcMode": "private",
+   "PublishAllPorts": false, "NetworkMode": "phyllon-stack-test_edge",
    "CapAdd": ["CAP_NET_BIND_SERVICE"], "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
    "Memory": 268435456, "PidsLimit": 128, "ReadonlyRootfs": true,
    "PortBindings": {"8080/tcp": [{"HostIp": "", "HostPort": "8080"}],
@@ -725,7 +728,8 @@ cat >"$scratch/posture-docker.json" <<'JSON'
  {"Id": "b2", "Name": "/phyllon-stack-test-phyllon-1",
   "Config": {"User": "65532:65532", "Labels": {"com.docker.compose.service": "phyllon"},
    "Healthcheck": {"Test": ["CMD", "/usr/local/bin/phyllon", "healthcheck"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_edge",
+  "HostConfig": {"Privileged": false, "PidMode": "", "IpcMode": "private",
+   "PublishAllPorts": false, "NetworkMode": "phyllon-stack-test_edge",
    "CapAdd": null, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
    "Memory": 536870912, "PidsLimit": 256, "ReadonlyRootfs": true, "PortBindings": {}},
   "Mounts": [{"Type": "bind", "Source": "/w/secrets/db_runtime_password",
@@ -733,7 +737,8 @@ cat >"$scratch/posture-docker.json" <<'JSON'
  {"Id": "c3", "Name": "/phyllon-stack-test-db-1",
   "Config": {"User": "999:999", "Labels": {"com.docker.compose.service": "db"},
    "Healthcheck": {"Test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_db",
+  "HostConfig": {"Privileged": false, "PidMode": "", "IpcMode": "private",
+   "PublishAllPorts": false, "NetworkMode": "phyllon-stack-test_db",
    "CapAdd": null, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
    "Memory": 1073741824, "PidsLimit": 256, "ReadonlyRootfs": true, "PortBindings": {}},
   "Mounts": [{"Type": "volume", "Source": "/var/lib/docker/volumes/phyllon-stack-test_db-data/_data",
@@ -743,7 +748,8 @@ cat >"$scratch/posture-podman.json" <<'JSON'
 [{"Id": "60214719ca3b", "Name": "phyllon-stack-test-proxy-1",
   "Config": {"User": "65533:65533", "Labels": {"com.docker.compose.service": "proxy"},
    "Healthcheck": {"Test": ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+  "HostConfig": {"Privileged": false, "PidMode": "private", "IpcMode": "shareable",
+   "PublishAllPorts": false, "NetworkMode": "bridge", "CapAdd": [],
    "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
     "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
    "SecurityOpt": ["no-new-privileges"], "Memory": 268435456, "PidsLimit": 128,
@@ -754,7 +760,8 @@ cat >"$scratch/posture-podman.json" <<'JSON'
  {"Id": "013789400cc5", "Name": "phyllon-stack-test-phyllon-1",
   "Config": {"User": "65532:65532", "Labels": {"com.docker.compose.service": "phyllon"},
    "Healthcheck": {"Test": ["CMD", "/usr/local/bin/phyllon", "healthcheck"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+  "HostConfig": {"Privileged": false, "PidMode": "private", "IpcMode": "shareable",
+   "PublishAllPorts": false, "NetworkMode": "bridge", "CapAdd": [],
    "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
     "CAP_NET_BIND_SERVICE", "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
    "SecurityOpt": ["no-new-privileges"], "Memory": 536870912, "PidsLimit": 256,
@@ -764,7 +771,8 @@ cat >"$scratch/posture-podman.json" <<'JSON'
  {"Id": "9693f3b7e546", "Name": "phyllon-stack-test-db-1",
   "Config": {"User": "999:999", "Labels": {"com.docker.compose.service": "db"},
    "Healthcheck": {"Test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]}},
-  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+  "HostConfig": {"Privileged": false, "PidMode": "private", "IpcMode": "shareable",
+   "PublishAllPorts": false, "NetworkMode": "bridge", "CapAdd": [],
    "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
     "CAP_NET_BIND_SERVICE", "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
    "SecurityOpt": ["no-new-privileges"], "Memory": 1073741824, "PidsLimit": 256,
@@ -782,9 +790,12 @@ new_posture() {
 	cp -- "$scratch/posture-$1.json" "$posture_fixture"
 }
 
-# Rewrites the container of service $1 with the jq filter $2.
+# Rewrites the container of service $1 with the jq filter given last; the
+# arguments between are passed to jq, such as --arg NAME VALUE.
 edit_container() {
-	jq --arg s "$1" "map(if .Config.Labels[\"com.docker.compose.service\"] == \$s then $2 else . end)" \
+	local service="$1" filter="${*: -1}"
+	jq --arg s "$service" "${@:2:$#-2}" \
+		"map(if .Config.Labels[\"com.docker.compose.service\"] == \$s then $filter else . end)" \
 		"$posture_fixture" >"$scratch/posture-tmp.json"
 	mv -- "$scratch/posture-tmp.json" "$posture_fixture"
 }
@@ -806,14 +817,14 @@ a_compliant_docker_stack_passes() {
 	new_posture docker
 	run_posture docker
 	expect_status 0
-	expect_out "posture: 34 checks passed on 3 containers"
+	expect_out "posture: 42 checks passed on 3 containers"
 }
 
 a_compliant_podman_stack_passes() {
 	new_posture podman
 	run_posture podman
 	expect_status 0
-	expect_out "posture: 34 checks passed on 3 containers"
+	expect_out "posture: 42 checks passed on 3 containers"
 }
 
 a_project_without_containers_fails() {
@@ -835,7 +846,7 @@ a_privileged_container_fails() {
 	new_posture docker
 	edit_container phyllon '.HostConfig.Privileged = true'
 	expect_gap "phyllon-stack-test-phyllon-1: runs privileged"
-	expect_out "posture: 1 gap, 33 of 34 checks passed"
+	expect_out "posture: 1 gap, 41 of 42 checks passed"
 }
 
 the_host_network_fails() {
@@ -896,8 +907,19 @@ an_engine_socket_mount_fails() {
 		"Destination": "/var/run/docker.sock"}]'
 	edit_container db '.Mounts += [{"Type": "bind", "Source": "/run/user/1000/podman/podman.sock",
 		"Destination": "/engine"}]'
-	expect_gap "phyllon-stack-test-proxy-1: mounts the engine socket /var/run/docker.sock"
-	expect_out "phyllon-stack-test-db-1: mounts the engine socket /run/user/1000/podman/podman.sock"
+	expect_gap "phyllon-stack-test-proxy-1: mounts an engine socket or its directory: /var/run/docker.sock"
+	expect_out "phyllon-stack-test-db-1: mounts an engine socket or its directory: /run/user/1000/podman/podman.sock"
+}
+
+# A directory that holds an engine socket gives the same access.
+an_engine_socket_directory_mount_fails() {
+	local dir
+	for dir in /run /var/run/ /run/user/1000/podman /run/podman /run/docker /run/containerd/containerd.sock; do
+		new_posture docker
+		# shellcheck disable=SC2016 # $d is a jq variable
+		edit_container db --arg d "$dir" '.Mounts += [{"Type": "bind", "Source": $d, "Destination": "/host"}]'
+		expect_gap "phyllon-stack-test-db-1: mounts an engine socket or its directory: $dir"
+	done
 }
 
 a_root_user_fails() {
@@ -916,10 +938,54 @@ a_published_port_outside_the_proxy_fails() {
 	expect_gap "phyllon-stack-test-db-1: publishes a port, which only proxy may"
 }
 
-a_writable_phyllon_root_fails() {
+a_published_port_through_publish_all_fails() {
+	new_posture docker
+	edit_container phyllon '.HostConfig.PublishAllPorts = true'
+	expect_gap "phyllon-stack-test-phyllon-1: publishes a port, which only proxy may"
+}
+
+a_writable_root_fails() {
 	new_posture docker
 	edit_container phyllon '.HostConfig.ReadonlyRootfs = false'
+	edit_container db 'del(.HostConfig.ReadonlyRootfs)'
+	edit_container proxy '.HostConfig.ReadonlyRootfs = false'
 	expect_gap "phyllon-stack-test-phyllon-1: has a writable root filesystem"
+	expect_out "phyllon-stack-test-db-1: has a writable root filesystem"
+	expect_out "phyllon-stack-test-proxy-1: has a writable root filesystem"
+}
+
+a_shared_network_namespace_fails() {
+	new_posture docker
+	edit_container phyllon '.HostConfig.NetworkMode = "container:c3"'
+	edit_container db '.HostConfig.NetworkMode = "service:phyllon"'
+	expect_gap "phyllon-stack-test-phyllon-1: shares the network of another container"
+	expect_out "phyllon-stack-test-db-1: shares the network of another container"
+}
+
+the_host_pid_and_ipc_namespaces_fail() {
+	new_posture podman
+	edit_container db '.HostConfig.PidMode = "host" | .HostConfig.IpcMode = "host"'
+	run_posture podman
+	expect_status 1
+	expect_out "phyllon-stack-test-db-1: uses the host pid namespace"
+	expect_out "phyllon-stack-test-db-1: uses the host ipc namespace"
+}
+
+# Malformed inspect output is an error (exit 2), not a gap and not jq's own
+# exit code.
+malformed_inspect_output_is_an_error() {
+	new_posture docker
+	edit_container db '.Mounts[0].Source = 5'
+	run_posture docker
+	expect_status 2
+	expect_out "cannot read"
+	echo 'not json' >"$posture_fixture"
+	POSTURE_IDS=x1 run_posture docker
+	expect_status 2
+	expect_out "cannot read"
+	echo '{"Id": "x1"}' >"$posture_fixture"
+	POSTURE_IDS=x1 run_posture docker
+	expect_status 2
 }
 
 tests=(
@@ -985,9 +1051,14 @@ tests=(
 	a_missing_pids_limit_fails
 	a_missing_healthcheck_fails
 	an_engine_socket_mount_fails
+	an_engine_socket_directory_mount_fails
 	a_root_user_fails
 	a_published_port_outside_the_proxy_fails
-	a_writable_phyllon_root_fails
+	a_published_port_through_publish_all_fails
+	a_writable_root_fails
+	a_shared_network_namespace_fails
+	the_host_pid_and_ipc_namespaces_fail
+	malformed_inspect_output_is_an_error
 )
 
 failed=0
