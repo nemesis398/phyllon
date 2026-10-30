@@ -945,23 +945,25 @@ Done: merged in 3dbb579 (#24) on 2026-10-30.
 
 - Consumes: a running `phyllon serve` on `PHYLLON_BASE_URL`.
 
-- [ ] **Step 1: Write the tests.** For each color scheme, `light` and `dark`,
+- [x] **Step 1: Write the tests.** For each color scheme, `light` and `dark`,
       with `page.emulateMedia({ colorScheme })`:
       `start page has no accessibility violations` (axe `violations` is empty
       for `/`); `not found page has no accessibility violations` (same for
       `/no-such-page`); `no request leaves the origin` (every request URL
       recorded while loading `/` has the base URL's origin); a full-page
       screenshot to `test-results/shell-<scheme>.png`.
-- [ ] **Step 2: Run them locally** against `cargo run -- serve` with a config
+- [x] **Step 2: Run them locally** against `cargo run -- serve` with a config
       whose database is `127.0.0.1:1`. Expected: all pass. A failure here is a
       finding against the shell, fixed in the shell, never by loosening the
       check.
-- [ ] **Step 3: Add the `browser` job:** build, start the binary, wait for
+- [x] **Step 3: Add the `browser` job:** build, start the binary, wait for
       `/healthz`, `npx playwright install --with-deps chromium`, run the tests,
       upload `test-results/` as an artifact. Add `browser` to the required
       checks in `scripts/github-settings.sh` and apply after Mika confirms.
-- [ ] **Step 4: Ship.** Title:
+- [x] **Step 4: Ship.** Title:
       `test(web): check the shell for accessibility in light and dark`.
+
+Done: merged in cc2b7e6 (#25) on 2026-10-30.
 
 ## Part 7: Skills and the map (PHY-14)
 

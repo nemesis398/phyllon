@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
-# check-signoff.sh, for scripts/github-settings.sh and scripts/posture.sh, and
-# for the image checks and the cloud-init seed of scripts/ci/fedora-vm.sh.
-# The title tests call the script with a title; the sign-off tests build a git
-# repository in a temporary directory, make commits with explicit identities
-# and run the script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the
-# test says. The settings tests put a stub gh first on PATH that answers from
+# check-signoff.sh, for the skill link check check-skill-links.sh, for
+# scripts/github-settings.sh and scripts/posture.sh, and for the image checks
+# and the cloud-init seed of scripts/ci/fedora-vm.sh. The title tests call the
+# script with a title; the sign-off tests build a git repository in a
+# temporary directory, make commits with explicit identities and run the
+# script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the test says.
+# The link tests build a tree of skills and links in a temporary directory and
+# check it. The settings tests put a stub gh first on PATH that answers from
 # fixture JSON, so they never reach GitHub, and the posture tests do the same
 # with a stub container engine. The tests of scripts/ci/fedora-vm.sh's trust
 # chain and seed run it with stub gpgv, curl, cloud-localds and QEMU, so they
@@ -23,6 +25,7 @@ ci_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 title_check="$ci_dir/check-pr-title.sh"
 signoff_check="$ci_dir/check-signoff.sh"
 settings_script="$ci_dir/../github-settings.sh"
+links_check="$ci_dir/check-skill-links.sh"
 
 # Keep the user's git configuration (signing, hooks, templates) out of the
 # temporary repositories.
@@ -35,6 +38,8 @@ trap 'rm -rf -- "$scratch"' EXIT
 
 # Set by the run_* helpers for the test that is running.
 repo=""
+# The tree of the running link test.
+tree=""
 status=0
 out=""
 # The pull request's author and whether the check runs in CI, for run_signoff.
@@ -377,6 +382,277 @@ an_unknown_base_fails() {
 	run_signoff 0000000000000000000000000000000000000000 "$(rev HEAD)"
 	expect_status 2
 	expect_out "not a commit"
+}
+
+# Skill links. Each test builds a tree with .agents/skills/ and
+# .claude/skills/ in a temporary directory and runs check-skill-links.sh on it.
+
+# Creates an empty tree for the link tests in $tree.
+new_tree() {
+	tree="$(mktemp -d -p "$scratch")"
+	mkdir -p "$tree/.agents/skills" "$tree/.claude/skills"
+}
+
+# Adds the skill $1, a directory with a SKILL.md, to $tree.
+add_skill() {
+	mkdir "$tree/.agents/skills/$1"
+	printf -- '---\nname: %s\n---\n' "$1" >"$tree/.agents/skills/$1/SKILL.md"
+}
+
+# Links .claude/skills/$1 to $2, by default the relative path to skill $1.
+link_skill() {
+	ln -s -- "${2:-../../.agents/skills/$1}" "$tree/.claude/skills/$1"
+}
+
+run_links() {
+	status=0
+	out="$("$links_check" "$tree" 2>&1)" || status=$?
+}
+
+a_resolving_link_passes() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	run_links
+	expect_status 0
+	expect_out "1 skill"
+}
+
+a_dangling_link_fails_and_names_it() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	link_skill gone
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/gone"
+	expect_no_out ".claude/skills/conscience"
+}
+
+# Every failure is reported, not only the first.
+a_skill_without_a_link_fails_and_names_it() {
+	new_tree
+	add_skill conscience
+	add_skill review
+	add_skill commits
+	link_skill conscience
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/review"
+	expect_out ".agents/skills/commits"
+	expect_no_out ".agents/skills/conscience"
+}
+
+# A copy in .claude/skills/ would drift from the shipped skill.
+a_copy_instead_of_a_link_fails() {
+	new_tree
+	add_skill conscience
+	cp -r -- "$tree/.agents/skills/conscience" "$tree/.claude/skills/conscience"
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/conscience"
+	expect_out "not a symlink"
+}
+
+a_file_among_the_links_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	echo notes >"$tree/.claude/skills/README.md"
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/README.md"
+}
+
+# An absolute link resolves only on the machine that made it.
+an_absolute_link_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience "$tree/.agents/skills/conscience"
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/conscience"
+	expect_out "absolute"
+}
+
+# A link to a directory with a SKILL.md outside .agents/skills/ still fails.
+a_link_outside_the_skills_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir "$tree/docs"
+	cp -- "$tree/.agents/skills/conscience/SKILL.md" "$tree/docs/SKILL.md"
+	link_skill stray ../../docs
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/stray"
+}
+
+# The link's name is the skill's name, so it must match the directory.
+a_link_to_another_skill_fails() {
+	new_tree
+	add_skill conscience
+	add_skill review
+	link_skill conscience
+	link_skill review
+	link_skill critic ../../.agents/skills/review
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/critic"
+}
+
+a_skill_without_a_skill_md_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir "$tree/.agents/skills/draft"
+	link_skill draft
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/draft"
+	expect_out "SKILL.md"
+}
+
+# A skill that is itself a symlink would ship whatever it points to.
+a_symlinked_skill_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir -p "$tree/elsewhere/review"
+	echo '---' >"$tree/elsewhere/review/SKILL.md"
+	ln -s -- ../../elsewhere/review "$tree/.agents/skills/review"
+	link_skill review
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/review: is a symlink"
+}
+
+a_file_among_the_skills_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	echo notes >"$tree/.agents/skills/README.md"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/README.md: is not a directory"
+}
+
+# A SKILL.md that is a symlink would ship whatever it points to.
+a_symlinked_skill_md_fails() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	echo '---' >"$tree/outside.md"
+	rm -- "$tree/.agents/skills/conscience/SKILL.md"
+	ln -s -- ../../../outside.md "$tree/.agents/skills/conscience/SKILL.md"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/conscience/SKILL.md: is a symlink"
+}
+
+# A symlinked .agents would ship a tree from outside the repository.
+a_symlinked_agents_directory_fails() {
+	new_tree
+	rm -r -- "$tree/.agents"
+	mkdir -p "$tree/elsewhere/skills/conscience"
+	echo '---' >"$tree/elsewhere/skills/conscience/SKILL.md"
+	ln -s -- elsewhere "$tree/.agents"
+	link_skill conscience
+	run_links
+	expect_status 1
+	expect_out ".agents/skills: resolves outside the repository"
+}
+
+a_symlinked_link_directory_fails() {
+	new_tree
+	add_skill conscience
+	rm -r -- "$tree/.claude/skills"
+	mkdir "$tree/elsewhere"
+	ln -s -- ../.agents/skills/conscience "$tree/elsewhere/conscience"
+	ln -s -- ../elsewhere "$tree/.claude/skills"
+	run_links
+	expect_status 1
+	expect_out ".claude/skills: resolves outside the repository"
+}
+
+# Each link points straight at its skill. A chain through a second link, here
+# one with an absolute target, resolves only on the machine that made it.
+a_chain_through_an_absolute_link_fails() {
+	new_tree
+	add_skill conscience
+	ln -s -- "$tree/.agents/skills/conscience" "$tree/hop"
+	link_skill conscience ../../hop
+	run_links
+	expect_status 1
+	expect_out ".claude/skills/conscience: links to ../../hop, not to the skill"
+}
+
+a_name_with_spaces_is_checked() {
+	new_tree
+	add_skill "two words"
+	link_skill "two words"
+	add_skill "no link"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/no link"
+	expect_no_out ".agents/skills/two words"
+}
+
+# No skills at all means a wrong root or a deleted directory, not a pass.
+an_empty_skill_directory_fails() {
+	new_tree
+	run_links
+	expect_status 1
+	expect_out "no skills"
+}
+
+a_missing_skill_directory_fails() {
+	new_tree
+	rm -r -- "$tree/.agents"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills"
+}
+
+a_missing_link_directory_fails_for_each_skill() {
+	new_tree
+	add_skill conscience
+	rm -r -- "$tree/.claude"
+	run_links
+	expect_status 1
+	expect_out ".agents/skills/conscience"
+}
+
+# Without an argument the script checks the repository it lives in, from any
+# working directory.
+without_an_argument_it_checks_its_own_tree() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir -p "$tree/scripts/ci"
+	cp -- "$links_check" "$tree/scripts/ci/"
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-skill-links.sh" 2>&1)" || status=$?
+	expect_status 0
+	rm -- "$tree/.claude/skills/conscience"
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-skill-links.sh" 2>&1)" || status=$?
+	expect_status 1
+	expect_out ".agents/skills/conscience"
+}
+
+a_root_that_is_not_a_directory_is_a_usage_error() {
+	tree="$scratch/nowhere"
+	run_links
+	expect_status 2
+}
+
+# An empty argument is a mistake, not a request for the default root.
+an_empty_root_is_a_usage_error() {
+	tree=""
+	run_links
+	expect_status 2
+	expect_out "ROOT is empty"
 }
 
 # Repository settings. The stub gh answers `gh api [-X METHOD] [-H HEADER]...
@@ -1412,6 +1688,28 @@ tests=(
 	a_signed_branch_with_an_unsigned_merge_passes
 	an_empty_range_fails
 	an_unknown_base_fails
+	a_resolving_link_passes
+	a_dangling_link_fails_and_names_it
+	a_skill_without_a_link_fails_and_names_it
+	a_copy_instead_of_a_link_fails
+	a_file_among_the_links_fails
+	an_absolute_link_fails
+	a_link_outside_the_skills_fails
+	a_link_to_another_skill_fails
+	a_skill_without_a_skill_md_fails
+	a_symlinked_skill_fails
+	a_file_among_the_skills_fails
+	a_symlinked_skill_md_fails
+	a_symlinked_agents_directory_fails
+	a_symlinked_link_directory_fails
+	a_chain_through_an_absolute_link_fails
+	a_name_with_spaces_is_checked
+	an_empty_skill_directory_fails
+	a_missing_skill_directory_fails
+	a_missing_link_directory_fails_for_each_skill
+	without_an_argument_it_checks_its_own_tree
+	a_root_that_is_not_a_directory_is_a_usage_error
+	an_empty_root_is_a_usage_error
 	the_audit_passes_when_every_setting_matches_and_only_reads
 	repository_flags_that_differ_fail
 	security_settings_that_differ_fail
