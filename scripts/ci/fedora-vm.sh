@@ -4,8 +4,13 @@
 # rootless Podman with SELinux enforcing, which an Ubuntu runner cannot. Run it
 # with:
 #
-#   scripts/ci/fedora-vm.sh [--copy PATH]... -- COMMAND [ARG]...
+#   scripts/ci/fedora-vm.sh [--package NAME]... [--linger] [--copy PATH]... \
+#     -- COMMAND [ARG]...
 #
+# The VM user has no sudo, so whatever needs root happens at boot, through
+# cloud-init, before the command runs: each --package NAME installs a Fedora
+# package with dnf, which needs the network, and --linger turns on systemd's
+# linger for the user, so its user services run without a login session.
 # Each --copy PATH (a file or a directory) is copied into the VM user's home
 # directory before the command runs, under the base name of the path it
 # resolves to: a symlink is followed and arrives under its target's name.
@@ -74,9 +79,25 @@ since() {
 	printf '%d.%d s' $((ms / 1000)) $((ms % 1000 / 100))
 }
 
+usage="usage: scripts/ci/fedora-vm.sh [--package NAME]... [--linger] [--copy PATH]... -- COMMAND [ARG]..."
 copies=()
+packages=()
+linger=false
 while (($# > 0)); do
 	case "$1" in
+	--package)
+		(($# >= 2)) || die "--package needs a name"
+		# The name goes into the YAML that root acts on, so it must be a
+		# plain package name: no space, quote, newline or leading dash.
+		[[ "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] ||
+			die "--package: '$2' is not a package name"
+		packages+=("$2")
+		shift 2
+		;;
+	--linger)
+		linger=true
+		shift
+		;;
 	--copy)
 		(($# >= 2)) || die "--copy needs a path"
 		[[ -e "$2" ]] || die "--copy: $2 does not exist"
@@ -87,10 +108,10 @@ while (($# > 0)); do
 		shift
 		break
 		;;
-	*) die "usage: scripts/ci/fedora-vm.sh [--copy PATH]... -- COMMAND [ARG]..." ;;
+	*) die "$usage" ;;
 	esac
 done
-(($# > 0)) || die "usage: scripts/ci/fedora-vm.sh [--copy PATH]... -- COMMAND [ARG]..."
+(($# > 0)) || die "$usage"
 
 # Reads a positive integer setting $1 with default $2 and maximum $3.
 setting() {
@@ -247,7 +268,8 @@ ssh-keygen -q -t ed25519 -N '' -C phyllon-vm -f "$run/host_ed25519"
 printf 'phyllon-vm %s\n' "$(cut -d' ' -f1,2 "$run/host_ed25519.pub")" >"$run/known_hosts"
 
 # The NoCloud seed: one user who logs in with the run's key and has no
-# password and no sudo, and the host key. Cloud-init creates no default user.
+# password and no sudo, the host key, and the root work the options ask for.
+# Cloud-init creates no default user.
 {
 	cat <<EOF
 #cloud-config
@@ -265,6 +287,14 @@ ssh_keys:
   ed25519_private: |
 EOF
 	sed 's/^/    /' "$run/host_ed25519"
+	if ((${#packages[@]} > 0)); then
+		# Quoted, so YAML reads a name such as null as a string.
+		echo "packages:"
+		printf "  - '%s'\n" "${packages[@]}"
+	fi
+	if [[ "$linger" == true ]]; then
+		printf 'runcmd:\n  - [loginctl, enable-linger, %s]\n' "$vm_user"
+	fi
 } >"$run/user-data"
 printf 'instance-id: phyllon-%s\n' "${run##*.}" >"$run/meta-data"
 cloud-localds "$run/seed.img" "$run/user-data" "$run/meta-data"
