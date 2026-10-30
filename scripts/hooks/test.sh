@@ -68,17 +68,33 @@ gate_calls() {
 	fi
 }
 
-# Runs the hook from / with a Stop event for $1 (the cwd field) and $2 (the
-# stop_hook_active field), and records the exit code, stdout and stderr.
-run_hook() {
-	local cwd="$1" active="$2" input
-	input="$(jq -nc --arg cwd "$cwd" --argjson active "$active" \
-		'{session_id: "test", hook_event_name: "Stop", cwd: $cwd, stop_hook_active: $active}')"
+# Runs the hook from / with $1 on stdin and PATH set to $2 if given, and
+# records the exit code, stdout and stderr.
+run_input() {
+	local input="$1" path="${2:-$PATH}"
 	status=0
-	(cd / && PHYLLON_GATE_CMD="$gate" "$repo/scripts/hooks/stop-gate.sh" \
+	(cd / && PATH="$path" PHYLLON_GATE_CMD="$gate" "$repo/scripts/hooks/stop-gate.sh" \
 		<<<"$input" >"$scratch/out" 2>"$scratch/err") || status=$?
 	out="$(cat "$scratch/out")"
 	err="$(cat "$scratch/err")"
+}
+
+# Runs the hook with a Stop event for $1 (the cwd field) and $2 (the
+# stop_hook_active field).
+run_hook() {
+	run_input "$(jq -nc --arg cwd "$1" --argjson active "$2" \
+		'{session_id: "test", hook_event_name: "Stop", cwd: $cwd, stop_hook_active: $active}')"
+}
+
+# Prints a directory that holds only the named tools, for a PATH without the
+# others.
+tool_bin() {
+	local bin tool
+	bin="$(mktemp -d -p "$scratch")"
+	for tool in "$@"; do
+		ln -s "$(command -v "$tool")" "$bin/$tool"
+	done
+	echo "$bin"
 }
 
 # Each check prints why it failed and returns non-zero, which fails the test.
@@ -109,6 +125,15 @@ expect_calls() {
 expect_err() {
 	[[ "$err" == *"$1"* ]] || {
 		echo "  expected stderr to contain '$1', got: $err"
+		return 1
+	}
+}
+# Claude Code shows a Stop hook's systemMessage to the user, and reads stdout
+# as JSON only when it holds nothing but one object.
+expect_message() {
+	jq -se --arg m "$1" 'length == 1 and (.[0].systemMessage | contains($m))' \
+		<<<"$out" >/dev/null 2>&1 || {
+		echo "  expected stdout to be one JSON object whose systemMessage contains '$1', got: $out"
 		return 1
 	}
 }
@@ -156,7 +181,7 @@ a_repeated_red_stop_is_let_through() {
 	run_hook "$repo" true
 	expect_status 0
 	expect_calls 1
-	expect_err "still red"
+	expect_message "still red"
 }
 
 a_new_stop_after_a_red_one_runs_the_gate() {
@@ -241,8 +266,11 @@ a_change_to_another_file_skips_the_gate() {
 	run_hook "$repo" false
 	expect_status 0
 	printf '# notes\n' >"$repo/README.md"
-	mkdir -p "$repo/docs"
-	printf 'x = 1\n' >"$repo/docs/nested.toml"
+	# A nested TOML file with no gate configuration name; nested clippy.toml
+	# and the like do count, see every_gate_file_runs_the_gate.
+	mkdir -p "$repo/docs" "$repo/.github"
+	printf 'x = 1\n' >"$repo/docs/book.toml"
+	printf 'version: 2\n' >"$repo/.github/dependabot.yml"
 	gate_fails
 	run_hook "$repo" false
 	expect_status 0
@@ -263,18 +291,118 @@ a_linked_worktree_is_gated_in_its_own_tree() {
 	expect_no_file "$repo/target/.gate-red"
 }
 
+every_gate_file_runs_the_gate() {
+	local path missed=()
+	local paths=(
+		src/lib.rs crates/a/src/lib.rs
+		Cargo.toml crates/a/Cargo.toml
+		Cargo.lock crates/a/Cargo.lock
+		clippy.toml crates/a/clippy.toml
+		deny.toml crates/a/deny.toml
+		rust-toolchain.toml crates/a/rust-toolchain.toml
+		rustfmt.toml .rustfmt.toml crates/a/.rustfmt.toml
+		.cargo/config.toml crates/a/.cargo/config.toml
+		taplo.toml
+		.github/workflows/ci.yml
+		scripts/check.sh
+		.githooks/pre-commit .githooks/lib/common.sh
+		.claude/settings.json
+		scripts/hooks/format-edited.sh
+	)
+	for path in "${paths[@]}"; do
+		new_repo
+		run_hook "$repo" false
+		expect_status 0
+		mkdir -p "$(dirname "$repo/$path")"
+		printf 'changed\n' >"$repo/$path"
+		gate_fails
+		run_hook "$repo" false
+		[[ "$status" == 2 ]] || missed+=("$path")
+	done
+	((${#missed[@]} == 0)) || {
+		echo "  a change to these did not run the gate: ${missed[*]}"
+		return 1
+	}
+}
+
+another_gate_command_runs_the_gate() {
+	new_repo
+	run_hook "$repo" false
+	expect_status 0
+	# A green run of another gate, such as a hand run with
+	# PHYLLON_GATE_CMD=/bin/true, must not count for this one.
+	gate="$(dirname "$gate")/other-gate"
+	printf '#!/usr/bin/env bash\necho "other gate ran"\nexit 1\n' >"$gate"
+	chmod +x "$gate"
+	run_hook "$repo" false
+	expect_status 2
+	expect_err "other gate ran"
+}
+
+a_gate_past_its_deadline_blocks_the_stop() {
+	new_repo
+	printf '#!/usr/bin/env bash\nsleep 10\n' >"$gate"
+	local start=$SECONDS
+	PHYLLON_GATE_TIMEOUT=1 run_hook "$repo" false
+	expect_status 2
+	expect_err "timed out after 1 s"
+	expect_file "$repo/target/.gate-red"
+	((SECONDS - start < 8)) || {
+		echo "  the hook waited $((SECONDS - start)) s for the gate"
+		return 1
+	}
+}
+
+the_hook_timeout_exceeds_the_gate_deadline() {
+	local settings="$hooks_dir/../../.claude/settings.json"
+	local hook_timeout deadline kill_after
+	hook_timeout="$(jq -r '.hooks.Stop[0].hooks[0].timeout // 600' "$settings")"
+	# shellcheck disable=SC2016 # the pattern matches a literal ${...}
+	deadline="$(sed -n 's/^deadline="\${PHYLLON_GATE_TIMEOUT:-\([0-9][0-9]*\)}"$/\1/p' \
+		"$hooks_dir/stop-gate.sh")"
+	kill_after="$(sed -n 's/^kill_after=\([0-9][0-9]*\)$/\1/p' "$hooks_dir/stop-gate.sh")"
+	[[ -n "$deadline" && -n "$kill_after" ]] || {
+		echo "  found no default deadline or kill_after in stop-gate.sh"
+		return 1
+	}
+	((hook_timeout > deadline + kill_after)) || {
+		echo "  the Stop hook timeout ($hook_timeout s) does not exceed the gate's" \
+			"deadline plus kill_after ($deadline + $kill_after s)"
+		return 1
+	}
+}
+
+a_missing_timeout_blocks_the_stop() {
+	new_repo
+	run_input '{"stop_hook_active": false}' "$(tool_bin bash cat jq)"
+	expect_status 2
+	expect_err "timeout not found"
+	expect_calls 0
+}
+
 a_missing_jq_blocks_the_stop() {
 	new_repo
-	local bin="$scratch/bin-$BASHPID"
-	mkdir -p "$bin"
-	ln -s "$(command -v bash)" "$bin/bash"
-	ln -s "$(command -v cat)" "$bin/cat"
-	status=0
-	(cd / && PATH="$bin" "$repo/scripts/hooks/stop-gate.sh" \
-		<<<'{"stop_hook_active": false}' >"$scratch/out" 2>"$scratch/err") || status=$?
-	err="$(cat "$scratch/err")"
+	run_input '{"stop_hook_active": false}' "$(tool_bin bash cat)"
 	expect_status 2
 	expect_err "jq not found"
+	expect_calls 0
+}
+
+# A tool call resets Claude Code's cap on consecutive stop-hook continuations,
+# so a hook that cannot work would otherwise block every stop for good.
+a_missing_jq_on_a_repeated_stop_is_let_through() {
+	new_repo
+	run_input '{"hook_event_name": "Stop", "stop_hook_active": true}' "$(tool_bin bash cat)"
+	expect_status 0
+	expect_message "jq not found"
+	expect_calls 0
+}
+
+invalid_json_blocks_the_first_stop() {
+	new_repo
+	run_input 'not json'
+	expect_status 2
+	expect_err "could not read"
 	expect_calls 0
 }
 
@@ -285,6 +413,14 @@ an_unexpected_failure_blocks_the_stop() {
 	run_hook "$repo" false
 	expect_status 2
 	expect_err "failed unexpectedly"
+}
+
+an_unexpected_failure_on_a_repeated_stop_is_let_through() {
+	new_repo
+	touch "$repo/target"
+	run_hook "$repo" true
+	expect_status 0
+	expect_message "failed unexpectedly"
 }
 
 tests=(
@@ -300,9 +436,17 @@ tests=(
 	a_renamed_rust_file_runs_the_gate_again
 	a_deleted_tracked_file_runs_the_gate_again
 	a_change_to_another_file_skips_the_gate
+	every_gate_file_runs_the_gate
+	another_gate_command_runs_the_gate
 	a_linked_worktree_is_gated_in_its_own_tree
+	a_gate_past_its_deadline_blocks_the_stop
+	the_hook_timeout_exceeds_the_gate_deadline
+	a_missing_timeout_blocks_the_stop
 	a_missing_jq_blocks_the_stop
+	a_missing_jq_on_a_repeated_stop_is_let_through
+	invalid_json_blocks_the_first_stop
 	an_unexpected_failure_blocks_the_stop
+	an_unexpected_failure_on_a_repeated_stop_is_let_through
 )
 
 command -v jq >/dev/null 2>&1 || {
