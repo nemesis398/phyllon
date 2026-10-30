@@ -39,6 +39,10 @@ shopt -s inherit_errexit
 
 input=""
 active=""
+# Set by block and let_through, so on_exit can tell their exits from a failing
+# command's, whatever its status. step names what the hook was doing.
+decided=""
+step="reading the hook input"
 
 # Our own messages only: escapes what they can contain for a JSON string.
 json_string() {
@@ -54,6 +58,7 @@ json_string() {
 # exits 0, and a Stop hook's plain stdout goes only to the debug log; the
 # systemMessage of a JSON object, alone on stdout, is shown to the user.
 let_through() {
+	decided=1
 	printf '{"systemMessage": %s}\n' "$(json_string "stop-gate: $*")"
 	exit 0
 }
@@ -63,6 +68,7 @@ let_through() {
 # says a file is missing ("No such file or directory"), which the gate's output
 # can say, so every block also prints a line on stdout.
 block() {
+	decided=1
 	echo "stop-gate: blocking the stop; the reason is on stderr"
 	printf 'stop-gate: %s\n' "$@" >&2
 	exit 2
@@ -79,20 +85,26 @@ repeated() {
 }
 
 # The hook cannot do its job: block the first stop, let a repeated one through.
+# $1 says what went wrong, the other arguments what to do about it; one
+# sentence each, since block prints each on its own line.
 fail() {
 	if repeated; then
-		let_through "$*" "The gate did not run."
+		let_through "$1" "The stop goes through unchecked." "${@:2}"
 	fi
 	block "$@"
 }
 
-# Fail closed: any other non-zero exit would let the agent stop unchecked.
+# Fail closed: a failing command would otherwise end the hook with its own
+# status, which lets the agent stop unchecked, or blocks with no stdout line
+# and without the let-through when that status is 2. A deliberate exit 0 needs
+# no flag, since a failing command never exits 0.
 # shellcheck disable=SC2329 # the EXIT trap calls it
 on_exit() {
 	local rc=$?
-	if ((rc != 0 && rc != 2)); then
+	if [[ -z "$decided" ]] && ((rc != 0)); then
 		trap - EXIT
-		fail "the hook failed unexpectedly (exit $rc); see the error above."
+		fail "the hook failed unexpectedly (exit $rc) while $step." \
+			"To see why, run scripts/hooks/stop-gate.sh </dev/null by hand or read Claude Code's debug log."
 	fi
 }
 trap on_exit EXIT
@@ -107,12 +119,13 @@ active="$(jq -r '.stop_hook_active // false' <<<"$input")" ||
 cwd="$(jq -r '.cwd // empty' <<<"$input")" ||
 	fail "could not read cwd from the hook input."
 
+step="looking for the tools it needs"
 if command -v timeout >/dev/null 2>&1; then
 	timeout_cmd=timeout
 elif command -v gtimeout >/dev/null 2>&1; then
 	timeout_cmd=gtimeout
 else
-	fail "timeout not found. Install GNU coreutils (on macOS: brew install coreutils)."
+	fail "timeout not found." "Install GNU coreutils (on macOS: brew install coreutils)."
 fi
 deadline="${PHYLLON_GATE_TIMEOUT:-1500}"
 kill_after=30
@@ -132,6 +145,7 @@ else
 	fail "neither sha256sum nor shasum found."
 fi
 
+step="finding the work tree to check"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -n "$cwd" && -d "$cwd" ]]; then
 	own="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)"
@@ -186,6 +200,7 @@ records() {
 gate="${PHYLLON_GATE_CMD:-scripts/check.sh}"
 # The gate command is part of the fingerprint, so a green run of another gate
 # does not count for this one.
+step="computing the fingerprint"
 fp="$({
 	printf 'gate\0%s\0' "$gate"
 	records
@@ -202,6 +217,7 @@ if repeated && [[ -f "$red" && "$(<"$red")" == "$fp" ]]; then
 		"so the stop goes through. Run scripts/check.sh to see the errors."
 fi
 
+step="running the gate"
 status=0
 start=$SECONDS
 # The output goes to Claude, so no color codes: cargo reads CARGO_TERM_COLOR,
@@ -210,6 +226,7 @@ output="$(CARGO_TERM_COLOR=never TERM=dumb \
 	"$timeout_cmd" --kill-after="$kill_after" "$deadline" "$gate" </dev/null 2>&1)" ||
 	status=$?
 
+step="writing the gate markers"
 mkdir -p target
 if ((status == 0)); then
 	printf '%s\n' "$fp" >"$green"

@@ -80,10 +80,20 @@ run_input() {
 }
 
 # Runs the hook with a Stop event for $1 (the cwd field) and $2 (the
-# stop_hook_active field).
+# stop_hook_active field), and PATH set to $3 if given.
 run_hook() {
 	run_input "$(jq -nc --arg cwd "$1" --argjson active "$2" \
-		'{session_id: "test", hook_event_name: "Stop", cwd: $cwd, stop_hook_active: $active}')"
+		'{session_id: "test", hook_event_name: "Stop", cwd: $cwd, stop_hook_active: $active}')" \
+		"${3:-}"
+}
+
+# Prints a directory with a fake $1 that exits with $2, to put first on PATH.
+fake_tool() {
+	local bin
+	bin="$(mktemp -d -p "$scratch")"
+	printf '#!/usr/bin/env bash\nexit %s\n' "$2" >"$bin/$1"
+	chmod +x "$bin/$1"
+	echo "$bin"
 }
 
 # Prints a directory that holds only the named tools, for a PATH without the
@@ -420,7 +430,30 @@ an_unexpected_failure_on_a_repeated_stop_is_let_through() {
 	touch "$repo/target"
 	run_hook "$repo" true
 	expect_status 0
-	expect_message "failed unexpectedly"
+	expect_message "failed unexpectedly (exit 1) while writing the gate markers"
+	expect_message "The stop goes through unchecked."
+}
+
+# A command that fails with exit 2 must not pass for a deliberate block.
+a_failure_with_exit_2_blocks_the_first_stop() {
+	new_repo
+	run_hook "$repo" false "$(fake_tool sort 2):$PATH"
+	expect_status 2
+	expect_err "failed unexpectedly (exit 2) while computing the fingerprint"
+	expect_calls 0
+	[[ -n "$out" ]] || {
+		echo "  expected a line on stdout"
+		return 1
+	}
+}
+
+a_failure_with_exit_2_on_a_repeated_stop_is_let_through() {
+	new_repo
+	run_hook "$repo" true "$(fake_tool sort 2):$PATH"
+	expect_status 0
+	expect_message "failed unexpectedly (exit 2) while computing the fingerprint"
+	expect_message "scripts/hooks/stop-gate.sh </dev/null"
+	expect_calls 0
 }
 
 tests=(
@@ -447,6 +480,8 @@ tests=(
 	invalid_json_blocks_the_first_stop
 	an_unexpected_failure_blocks_the_stop
 	an_unexpected_failure_on_a_repeated_stop_is_let_through
+	a_failure_with_exit_2_blocks_the_first_stop
+	a_failure_with_exit_2_on_a_repeated_stop_is_let_through
 )
 
 command -v jq >/dev/null 2>&1 || {
