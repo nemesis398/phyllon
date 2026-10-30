@@ -8,9 +8,9 @@ Status: accepted
 
 Phyllon starts as one binary with two subcommands, `serve` and `healthcheck`,
 and five modules in `src/`: `cli`, `config`, `db`, `http` and `web`. They hold
-989 lines on 2026-10-30. Later phases add more, such as an MCP server, OAuth and
-Typst rendering, and a contributor may ask whether each of those should be a
-crate of its own.
+989 lines when this record was written. Later phases add more, such as an MCP
+server, OAuth and Typst rendering, and a contributor may ask whether each of
+those should be a crate of its own.
 
 Four facts bear on the layout:
 
@@ -40,7 +40,7 @@ Four facts bear on the layout:
 | Dial         | One package                                                   | A workspace of several crates                                              | A binary only                                                  |
 | ------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Granularity  | The module is the finest unit, and nothing enforces its edge  | The crate is a finer unit, and the compiler enforces its edge              | One unit, and tests can only see it from outside               |
-| Redundancy   | One `Cargo.toml`, one `[lints]` table and one lockfile entry  | Each member repeats its manifest, or inherits lints in a way not verified  | One manifest, as in option 1                                   |
+| Redundancy   | One `Cargo.toml`, one `[lints]` table and one lockfile entry  | Each member repeats its manifest, or inherits lints from the workspace     | One manifest, as in option 1                                   |
 | Coupling     | Modules may use each other, so `http` and `web` need no split | A cycle between crates is impossible, so `AppState` would have to move out | Not at stake                                                   |
 | Retention    | Not at stake                                                  | Not at stake                                                               | Not at stake                                                   |
 | Flow control | A test calls a function in the library                        | A test calls a function in the crate that owns it                          | A test goes through a process, a socket and a start-up timeout |

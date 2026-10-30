@@ -4,9 +4,10 @@ This map lists each module of `src/`, what it owns, the invariants it keeps and
 the decision records behind it. Read the entry of a module before you change it,
 and read [the package](#the-package) first.
 
-Each invariant here is true of the code today. If a change breaks one, change
-the code back, or change this map in the same pull request and say why in its
-description. If you add a module, add its entry.
+Each invariant here is true of the code today, or is marked as a rule for a
+later phase. If a change breaks one, change the code back, or change this map in
+the same pull request and say why in its description. If you add a module, add
+its entry.
 
 `scripts/ci/check-map.sh` keeps the map and `src/` in step. It fails on a module
 without an entry and on an entry without a module. An entry is a heading of
@@ -43,8 +44,9 @@ uses.
   that variable can change any setting of the database sessions and sqlx cannot
   clear it.
 - A failure prints `phyllon: <reason>` on stderr and exits 1, and a usage error
-  exits 2. No reason carries a secret: the config file holds none, and the error
-  for a secret file names its key and path, never its content.
+  exits 2. The error for a secret file names its key and path, never its
+  content. A parse error of the config file quotes the offending line, so keep
+  secrets out of that file (see `config`).
 - The database password is read into a `Secret` once, by `serve`, and handed
   only to `db::pool`. The log lines `serve` writes, at level INFO, hold the
   version, the commit and the listen address, or say that the server is
@@ -68,10 +70,13 @@ to. Types: `Config`, `DatabaseConfig`, `Secret` and `ConfigError`.
 
 **Invariants.**
 
-- The file holds no secret. A secret lives in its own file, which a `*_file` key
-  names (`database.password_file`), and `Config::load` does not read it.
-  `DatabaseConfig::password` reads it, strips one trailing line ending and
-  nothing else, and returns a `Secret`.
+- The config file must hold no secret. A secret lives in its own file, which a
+  `*_file` key names (`database.password_file`), and `Config::load` does not
+  read it. `DatabaseConfig::password` reads it, strips one trailing line ending
+  and nothing else, and returns a `Secret`. Nothing enforces the rule on the
+  file itself: a parse error quotes the offending line, and `serve` prints it to
+  stderr, so a secret pasted into the file, such as a `password` key that
+  `deny_unknown_fields` rejects, would reach the log.
 - A `Secret` cannot leak through `Debug`: `{:?}` and `{:#?}` print
   `Secret([redacted])`. Its text comes out only through `Secret::expose`, whose
   one caller is `db::pool`.
@@ -104,7 +109,7 @@ Source: [`src/db.rs`](../src/db.rs)
   do nothing while TLS is off, and `serve` refuses to start while `PGOPTIONS` is
   set. The TLS mode is `Disable`, because sqlx is built without a TLS feature.
 - The password reaches sqlx only through the connect options, which are not
-  logged. `Secret::expose` is called nowhere else.
+  logged. `Secret::expose` is called nowhere else in `src/`.
 - No request waits more than two seconds for a connection, and `db::ready` takes
   two seconds in total at most, whatever the database does. It returns a `bool`,
   never an error.
@@ -135,15 +140,17 @@ running version is offered.
   no internal detail reaches a client.
 - `/healthz` does not touch the database. `/readyz` answers 200 or 503 from
   `db::ready`. Both answer `HEAD` too.
-- The web routes and the MCP routes of phase 2 never share a router, so cookie
-  and bearer authentication never share a route. This holds today because no MCP
-  route exists, and `router` carries only the health routes and the web routes.
-  It is a rule for phase 2, where `/mcp` and `/mcp/admin` each get a router of
-  their own.
+- Cookie and bearer authentication never share a route. The phase 1 design asks
+  for separate routers for the web UI and for `/mcp` and `/mcp/admin` (section
+  "Doors phase 1 keeps open"), so the web routes and the MCP routes of phase 2
+  each get their own `Router` with their own authentication layer, and no layer
+  spans both. This is a rule for phase 2. It holds today because no MCP route
+  exists and `router` carries only the health routes and the web routes.
 
 **Decision records.** [0003](decisions/0003-axum-and-askama.md) chose axum.
-[0004](decisions/0004-caddy.md) explains why the headers are set here and not in
-the bundled proxy.
+[0004](decisions/0004-caddy.md) relies on this: the headers are set here and not
+in the bundled proxy, so they hold behind a deployer's own proxy (the design's
+section "Behind an existing proxy").
 
 ## `web`
 
@@ -163,10 +170,11 @@ the assets under `/assets/`. Every English string a page shows.
 - Pages load nothing from another origin and hold no script, no style block and
   no inline style. The tests in `tests/web.rs` check the start page, the 404
   page and the 500 page.
-- All English strings are constants in `strings.rs`, so phase 2 can move them
-  into Fluent files without searching the templates.
+- Every English string a page shows is a constant in `strings.rs`, so phase 2
+  can move them into Fluent files without searching the templates.
 - A page that fails to render gets the branded 500 page. If that page fails too,
-  the answer is a plain-text 500, since nothing else is left to try.
+  the answer is a plain-text 500, since nothing else is left to try. That
+  fallback, `internal server error`, is the one string outside `strings.rs`.
 - The 500 page says nothing about the cause. Pages that know the running build
   show its version and the source link of `http::source_url`; the 500 page has
   no build at hand and leaves both out.
