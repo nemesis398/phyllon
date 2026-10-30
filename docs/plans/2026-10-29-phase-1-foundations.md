@@ -66,6 +66,18 @@ Read both before the first task.
   pre-release; images are tagged with the exact version and the minor line
   (`0.1.0` and `0.1`), never `latest` before 1.0; a breaking change or any
   database migration raises the minor number.
+- Release provenance reaches SLSA v1.0 Build Level 3 (decided by Mika on
+  2026-10-30): every release artifact is built and attested inside one reusable
+  workflow, `.github/workflows/build.yml`, which `release.yml` calls, so the
+  calling workflow cannot touch the build or the signing. Verification pins that
+  workflow with
+  `--signer-workflow nemesis398/phyllon/.github/workflows/build.yml`, and the
+  cosign identity is
+  `https://github.com/nemesis398/phyllon/.github/workflows/build.yml@refs/heads/main`.
+- Every job that has steps in `build.yml` and `release.yml` starts with
+  `step-security/harden-runner`, pinned by SHA like every action, with
+  `egress-policy: block` and an `allowed-endpoints` list of exactly the hosts
+  the job needs (Mika, 2026-10-30). The other workflows do not use it.
 - Security headers, exact values:
   <!-- markdownlint-disable-next-line MD013 -->
   `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
@@ -359,10 +371,11 @@ Done: merged in fd46d5c (#4) on 2026-10-30.
 
 - Consumes: `scripts/check.sh`, the Markdown check.
 - Produces: the required check names `gate`, `integration (17)`,
-  `integration (18)`, `pr-title`, `sign-off`, `markdown` and `scripts`, which
-  the ruleset in Task 7 names exactly; the `scripts` job, which later tasks
-  extend with their script tests. Every job of `ci.yml` is a required check, and
-  a task that adds a job adds its name to `scripts/github-settings.sh`.
+  `integration (18)`, `pr-title`, `sign-off`, `markdown`, `scripts` and
+  `dependency-review`, which the ruleset in Task 7 names exactly; the `scripts`
+  job, which later tasks extend with their script tests. Every job of `ci.yml`
+  is a required check, and a task that adds a job adds its name to
+  `scripts/github-settings.sh`.
 
 - [ ] **Step 1: Write the failing script tests** in `scripts/ci/test.sh`.
       Titles: `feat(web): add the shell` passes;
@@ -395,7 +408,14 @@ Done: merged in fd46d5c (#4) on 2026-10-30.
       `sign-off` (pull requests only; the title passes through an `env:`
       variable, never `${{ }}` inside `run:`); `markdown` (`npm ci`, the two
       Markdown checks); `scripts` (`shellcheck` on `scripts/**/*.sh` and
-      `.githooks/*`, then `scripts/ci/test.sh` and `scripts/hooks/test.sh`).
+      `.githooks/*`, then `scripts/ci/test.sh` and `scripts/hooks/test.sh`);
+      `dependency-review` (pull requests only, `permissions: contents: read`; a
+      pinned `actions/dependency-review-action` with `fail-on-severity: low` and
+      an `allow-licenses` list equal to the one in `deny.toml`: MIT, Apache-2.0,
+      Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib,
+      Unicode-3.0, MPL-2.0, CC0-1.0 and AGPL-3.0-or-later). It covers what
+      `cargo deny` does not, the npm tooling and the GitHub Actions (Mika,
+      2026-10-30).
 - [ ] **Step 7: Write the other workflows.** `workflows.yml`: on pull requests
       touching `.github/**`, zizmor and actionlint, both pinned. `nightly.yml`:
       daily at 03:17 UTC, `cargo deny check advisories`. `scorecard.yml`:
@@ -436,9 +456,10 @@ Done: merged in fd46d5c (#4) on 2026-10-30.
       configured; immutable releases on; workflow permissions read-only, no pull
       request approvals by Actions; fork pull request approval
       `all_external_contributors`; one ruleset on `main` that requires a pull
-      request (zero approvals, squash only), the seven checks from Task 6,
-      linear history, and blocks force pushes and deletion, with no bypass
-      actors.
+      request (zero approvals, squash only), the eight checks from Task 6,
+      linear history and signed commits (Mika, 2026-10-30; GitHub signs squash
+      merges and Dependabot's commits, so nothing legitimate breaks), and blocks
+      force pushes and deletion, with no bypass actors.
 - [ ] **Step 2: Run the audit before applying.** Run
       `scripts/github-settings.sh audit`. Expected: exit 1, listing what differs
       today (homepage, Discussions, merge methods, reporting, Dependabot,
@@ -631,7 +652,10 @@ stderr and shuts down cleanly on SIGTERM and Ctrl-C.
   `PHYLLON_GIT_COMMIT`.
 
 - [ ] **Step 1: Write the Dockerfile.** Builder: `rust:1.99.1-alpine` pinned by
-      digest, `apk add musl-dev`, `cargo build --release --locked`, with
+      digest, `apk add musl-dev`, `cargo install --locked cargo-auditable` at a
+      pinned version (the newest one at least 7 days old, matching the
+      Dependabot cooldown), then `cargo auditable build --release --locked`, so
+      the binary carries its crate list (Mika, 2026-10-30), with
       `PHYLLON_GIT_COMMIT` passed as a build argument and environment variable.
       Final stage: `gcr.io/distroless/static-debian13:nonroot` pinned by digest,
       the binary only, `EXPOSE 8080`. Keep the base image names in one place at
@@ -647,7 +671,12 @@ stderr and shuts down cleanly on SIGTERM and Ctrl-C.
 - [ ] **Step 3: Confirm the binary is static.** Run
       `docker run --rm --entrypoint '' phyllon:dev /usr/local/bin/phyllon --version`
       on the distroless base, which has no libc; it prints the version.
-- [ ] **Step 4: Ship.** Title: `build: build a static image on distroless`.
+- [ ] **Step 4: Confirm the binary lists its crates.** Copy it out of the image
+      with `docker create` and `docker cp`, then run
+      `readelf -S phyllon | grep .dep-v0` (or `objdump -h`). Expected: the
+      `.dep-v0` section is there. Phase 1 stops at the section; a scanner reads
+      it from Task 21 on.
+- [ ] **Step 5: Ship.** Title: `build: build a static image on distroless`.
 
 ### Task 12: The compose stack and its posture
 
@@ -1018,25 +1047,34 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       releases on.
 - [ ] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
       its generated workflow attach to the draft that release-plz created, then
-      publish only after verification. Note every edit the generated workflow
+      publish only after verification. Its build and attest steps have to run
+      inside a reusable workflow (`on: workflow_call`) that the release workflow
+      calls, for SLSA Build Level 3. Note every edit the generated workflow
       needed.
-- [ ] **Step 3: Try our own build job** in the same workflow: two native runners
-      build the static binaries, upload them to the draft, attest them, verify
-      them, publish.
+- [ ] **Step 3: Try our own build job:** a reusable workflow in which two native
+      runners build the static binaries and attest them; the calling workflow
+      uploads them to the draft, verifies them with `--signer-workflow` and
+      publishes. Its build job runs with `step-security/harden-runner` in block
+      mode (Mika, 2026-10-30), so the spike learns the allowlist: the audit
+      output of a first run gives the hosts, and Task 20 takes the list from
+      here.
 - [ ] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
       and check that `release_always = false` releases a merge from that branch
       and ignores an ordinary merge.
 - [ ] **Step 5: Decide and record.** dist stays if it fits the
-      draft-then-publish order with its generated workflow intact; otherwise the
-      own job. Write 0006 with what each needed. Then, after Mika agrees, delete
-      the spike repository.
+      draft-then-publish order and builds inside the reusable workflow with its
+      generated workflow intact; otherwise the own job. Check with
+      `gh attestation verify --signer-workflow` that each variant's attestation
+      names the reusable workflow as its signer, not the caller. Write 0006 with
+      what each needed. Then, after Mika agrees, delete the spike repository.
 
 ### Task 20: The release workflow
 
 **Files:**
 
 - Create: `release-plz.toml`, `scripts/prepare-release.sh`,
-  `.github/workflows/release.yml`, `deploy/compose.release.yaml.tmpl`
+  `.github/workflows/release.yml`, `.github/workflows/build.yml`,
+  `deploy/compose.release.yaml.tmpl`
 - Modify: `scripts/github-settings.sh` (if the release needs a setting)
 
 **Interfaces:**
@@ -1054,25 +1092,41 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 - [ ] **Step 2: Write `prepare-release.sh`** and run it with `--dry-run` on a
       scratch clone. Expected: the branch, the version in `Cargo.toml` and the
       changelog entry, no push.
-- [ ] **Step 3: Write `release.yml`** as 0006 decided, with a `concurrency`
-      group and per-job permissions. Jobs: `release-plz` (tag and draft; outputs
-      whether a release was created and its tag); binaries for
-      `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
-      runners, with a CycloneDX SBOM each from `cargo-cyclonedx`; the image,
+- [ ] **Step 3: Write `build.yml`** (`on: workflow_call`, with the version as
+      input and the binaries' names and the image digest as outputs), as 0006
+      decided. It does everything that produces or signs an artifact: binaries
+      for `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
+      runners, built with `cargo auditable build --release --locked` (Mika,
+      2026-10-30), with a CycloneDX SBOM each from `cargo-cyclonedx`; the image,
       built per architecture by digest and merged into one manifest tagged with
       the version and its minor line, with `sbom: true` and
       `provenance: mode=max`; `actions/attest` for every binary, SBOM and the
-      image digest; `cosign sign --yes` on the image digest; the release's
+      image digest; `cosign sign --yes` on the image digest. Each job holds only
+      the permissions its step needs (`attestations: write`, `id-token: write`,
+      `contents: read`, and `packages: write` for the image). The first step of
+      every job is the pinned `step-security/harden-runner` with
+      `egress-policy: block` and the `allowed-endpoints` that Task 19 learned:
+      crates.io, static.crates.io, index.crates.io, static.rust-lang.org,
+      github.com, api.github.com, ghcr.io and its blob hosts, Sigstore's fulcio,
+      rekor and tuf hosts, and the base image registries (Mika, 2026-10-30).
+- [ ] **Step 4: Write `release.yml`,** with a `concurrency` group and per-job
+      permissions, and the same Harden-Runner first step in every job that has
+      steps, each job with only the endpoints it needs. Jobs: `release-plz` (tag
+      and draft; outputs whether a release was created and its tag); `build`,
+      which calls `build.yml` only when a release was created; the release's
       `compose.yaml`, rendered from the template with the image digest;
-      `verify`, which runs `gh attestation verify` on every file and on
-      `oci://ghcr.io/nemesis398/phyllon:<version>`, and `cosign verify` with
-      `--certificate-identity https://github.com/nemesis398/phyllon/.github/workflows/release.yml@refs/heads/main`
+      `verify`, which runs
+      `gh attestation verify --signer-workflow nemesis398/phyllon/.github/workflows/build.yml`
+      on every file and on `oci://ghcr.io/nemesis398/phyllon:<version>`, and
+      `cosign verify` with
+      `--certificate-identity https://github.com/nemesis398/phyllon/.github/workflows/build.yml@refs/heads/main`
       and
       `--certificate-oidc-issuer https://token.actions.githubusercontent.com`;
       `publish`, which runs only when `verify` passed and turns the draft into a
       published pre-release.
-- [ ] **Step 4: Lint it.** Run `actionlint` and `zizmor`. Expected: no findings.
-- [ ] **Step 5: Ship.** Title:
+- [ ] **Step 5: Lint them.** Run `actionlint` and `zizmor` on both workflows.
+      Expected: no findings.
+- [ ] **Step 6: Ship.** Title:
       `ci: build, attest, sign and verify releases before publishing`. A merge
       of this pull request releases nothing, because `Cargo.toml` still says
       `0.0.0` and the branch is not a release branch.
@@ -1082,8 +1136,8 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 **Files:**
 
 - Modify: `Cargo.toml`, `CHANGELOG.md` (through the script), `docs/install.md`
-  ("Verifying a release"), `docs/decisions/0007-podman-signature-policy.md`
-  (only if Step 5 fails)
+  ("Verifying a release"), `.github/workflows/nightly.yml`, `README.md`,
+  `docs/decisions/0007-podman-signature-policy.md` (only if Step 5 fails)
 
 - [ ] **Step 1: Prepare it.** Run `scripts/prepare-release.sh 0.1.0`, push after
       the key dialog, open the pull request. Expected: CI green.
@@ -1092,12 +1146,21 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       binaries, their SBOMs and `compose.yaml`.
 - [ ] **Step 3: Mika makes the GHCR package public** in its package settings,
       since a new package starts private and the API cannot change that.
-- [ ] **Step 4: Verify from outside.** On a machine that did not build it:
-      `gh attestation verify phyllon-x86_64-unknown-linux-musl -R nemesis398/phyllon`,
-      `gh attestation verify oci://ghcr.io/nemesis398/phyllon:0.1.0 -R nemesis398/phyllon`,
-      and the `cosign verify` command from Task 20. Expected: all three succeed.
+- [ ] **Step 4: Verify from outside.** On a machine that did not build it, run
+      these two and the `cosign verify` command from Task 20. Expected: all
+      three succeed, and the attestation's predicate names `build.yml` as the
+      build workflow.
+
+  ```bash
+  signer=nemesis398/phyllon/.github/workflows/build.yml
+  gh attestation verify phyllon-x86_64-unknown-linux-musl \
+    -R nemesis398/phyllon --signer-workflow "$signer"
+  gh attestation verify oci://ghcr.io/nemesis398/phyllon:0.1.0 \
+    -R nemesis398/phyllon --signer-workflow "$signer"
+  ```
+
 - [ ] **Step 5: Spike the Podman signature policy.** Write a `policy.json` that
-      requires a `sigstoreSigned` keyless signature from the release workflow's
+      requires a `sigstoreSigned` keyless signature from the build workflow's
       identity for `ghcr.io/nemesis398/phyllon`, and pull `0.1` with it under
       rootless Podman. Expected: the pull succeeds, and a pull of an unsigned
       image under the same name prefix is refused. If Podman cannot match a
@@ -1105,8 +1168,25 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       an update, and no `AutoUpdate=` in the Quadlet unit).
 - [ ] **Step 6: Write "Verifying a release"** in the install guide with the
       commands from Steps 4 and 5.
-- [ ] **Step 7: Ship** the guide. Title:
-      `docs: explain how to verify a release`.
+- [ ] **Step 7: Scan the published image every night** (Mika, 2026-10-30). This
+      needs the public package from Step 3, since a scan cannot pull a private
+      image. Add a job to `nightly.yml` with `contents: read` and
+      `security-events: write`: a pinned `anchore/scan-action` (Grype) on
+      `ghcr.io/nemesis398/phyllon:0.1` with `fail-build: true`,
+      `severity-cutoff: high` and SARIF output, then a pinned
+      `github/codeql-action/upload-sarif`. Grype reads the crate list that
+      `cargo auditable` embedded. Add `workflow_dispatch` if the file lacks it,
+      and move the tag when the minor line moves. Expected: a manual run from
+      the pull request's branch is green, the log lists the binary's Rust
+      crates, and the SARIF shows in code scanning.
+- [ ] **Step 8: Add the release badge to the README** (Mika, 2026-10-30), now
+      that a release exists: the image
+      `https://img.shields.io/github/v/release/nemesis398/phyllon?include_prereleases&sort=semver`,
+      linking to `https://github.com/nemesis398/phyllon/releases`. Expected: the
+      badge shows `v0.1.0`.
+- [ ] **Step 9: Ship** the guide, `nightly.yml` and the README badge in one pull
+      request. Title:
+      `ci: scan the published image and explain how to verify a release`.
 
 ## Part 9: Acceptance
 
@@ -1124,15 +1204,23 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 - [ ] **Step 4: The map and skill checks bite.** One throwaway pull request with
       a module missing from the map and one with a dangling skill link both turn
       `scripts` red; close both unmerged.
-- [ ] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job and
-      records 0006 and, if written, 0007.
+- [ ] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job
+      (which shows the `--signer-workflow` check, the SLSA Build Level 3
+      evidence) and records 0006 and, if written, 0007.
 - [ ] **Step 6: The shell.** Link the `browser` run and its two screenshots.
-- [ ] **Step 7: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
+- [ ] **Step 7: The best practices badge** (Mika, 2026-10-30). Stop and ask in
+      the question dialog: only Mika can do this. Mika registers the project at
+      <https://www.bestpractices.dev> and fills in the passing-level form. Then
+      add the badge, `https://www.bestpractices.dev/projects/<id>/badge` with
+      the ID from the registration, to the README, linking to the project page.
+      Scorecard reads the registration; the badge only shows it. Title:
+      `docs: show the best practices badge in the README`.
+- [ ] **Step 8: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
       latest Scorecard run shows Pinned-Dependencies, Token-Permissions and
-      Dangerous-Workflow at 10; `curl -sI https://phyllon.de` redirects to the
-      repository. GitHub's workflow lockfiles have their month of use on
-      2026-11-28: if phase 1 closes earlier, add a Plane item to look at them
-      then.
-- [ ] **Step 8: Close M1.** Mark PHY-9 to PHY-18 done with their evidence, close
+      Dangerous-Workflow at 10 and CII-Best-Practices above 0;
+      `curl -sI https://phyllon.de` redirects to the repository. GitHub's
+      workflow lockfiles have their month of use on 2026-11-28: if phase 1
+      closes earlier, add a Plane item to look at them then.
+- [ ] **Step 9: Close M1.** Mark PHY-9 to PHY-18 done with their evidence, close
       M1, update the project paper's milestone line through `/project update`,
       and set M2's date.
