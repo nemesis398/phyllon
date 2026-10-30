@@ -68,7 +68,9 @@ check.
 - On the laptop, the finished job's VM step, which boots the VM and runs
   `scripts/stack-test.sh podman` and `scripts/quadlet-test.sh`, took 78 s with
   the Fedora image cached.
-- The CI time of the finished job is still to be measured.
+- On CI, the finished job took 4 min 27 s in its first run (41063677099, on pull
+  request #22, runner image 20261025.353.1): the image build and the tools
+  before the VM, then 93 s for the VM step, with the VM ready after 31.0 s.
 - The job depends on GitHub keeping `/dev/kvm` on its hosted runners and on
   Fedora's mirrors. If a run goes past 15 minutes, or the job turns flaky, write
   a new record and revisit option 2.
