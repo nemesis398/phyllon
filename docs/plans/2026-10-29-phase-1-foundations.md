@@ -901,12 +901,12 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 `Cache-Control: public, max-age=3600`. Templates render to a `String` and return
 `Html`; no askama integration crate.
 
-- [ ] **Step 1: Fetch the fonts.** From `github.com/google/fonts` at a pinned
+- [x] **Step 1: Fetch the fonts.** From `github.com/google/fonts` at a pinned
       commit, `ofl/atkinsonhyperlegiblenext` and `ofl/fraunces`. Subset to
       Latin, Latin-1, Latin Extended-A, general punctuation and the math
       operators block, as WOFF2, with `pyftsubset`; each file under 100 KB.
       Record the commit and the command in the pull request.
-- [ ] **Step 2: Write the failing tests** in `tests/web.rs`:
+- [x] **Step 2: Write the failing tests** in `tests/web.rs`:
       `start_page_names_phyllon_and_links_the_source` (200, `text/html`,
       contains "Phyllon", the version, and
       `href="https://github.com/nemesis398/phyllon/tree/abc123"` for a build
@@ -920,16 +920,18 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       all); `the_not_found_page_is_branded` (404, contains "Page not found" and
       a link to `/`); `a_panic_shows_the_branded_error_page` (500, contains the
       error page's heading, not the panic message).
-- [ ] **Step 3: Run them.** Expected: compile errors.
-- [ ] **Step 4: Implement** `web/`, the templates and `phyllon.css`. The layout
+- [x] **Step 3: Run them.** Expected: compile errors.
+- [x] **Step 4: Implement** `web/`, the templates and `phyllon.css`. The layout
       is a header with the mark and the wordmark "Phyllon" set in Fraunces 600,
       a main area that says what Phyllon is and that there is nothing to sign in
       to yet, and a footer with the version, "AGPL-3.0-or-later" and the source
       link. All English strings live in `strings.rs`.
-- [ ] **Step 5: Run the tests and the gate.** Expected: seven passes;
+- [x] **Step 5: Run the tests and the gate.** Expected: seven passes;
       `scripts/check.sh` passes.
-- [ ] **Step 6: Ship.** Title:
+- [x] **Step 6: Ship.** Title:
       `feat(web): add the shell in the brand, light and dark`.
+
+Done: merged in 3dbb579 (#24) on 2026-10-30.
 
 ### Task 16: The browser checks
 
