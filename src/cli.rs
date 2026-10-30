@@ -2,6 +2,9 @@
 //!
 //! The config file is the only configuration, so the commands take one option,
 //! `--config` (or `PHYLLON_CONFIG`), and nothing else.
+//!
+//! The module is Unix-only: `serve` listens for signals with
+//! `tokio::signal::unix`. Phyllon runs in a Linux container.
 
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
@@ -106,7 +109,9 @@ pub fn run() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("phyllon: {error}");
+            // Nobody is left to tell when stderr is closed, and `eprintln!`
+            // would panic there.
+            writeln!(io::stderr(), "phyllon: {error}").ok();
             ExitCode::FAILURE
         }
     }
@@ -240,6 +245,7 @@ pub fn probe(addr: SocketAddr, timeout: Duration) -> Result<(), ProbeError> {
         let read = match stream.read(chunk.get_mut(..room).unwrap_or_default()) {
             Ok(0) => break,
             Ok(read) => read,
+            // signal(7): recv with SO_RCVTIMEO returns EINTR even under SA_RESTART, and `probe` is public.
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(io_error(error)),
         };
