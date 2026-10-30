@@ -94,6 +94,23 @@ def main():
               f'letter-spacing="-1" fill="{lt["blue"]}">phyllon</text>')
     write("lockup.svg", f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 640 200" width="640" height="200" '
                         f'role="img"><title>Phyllon</title>{lock}</svg>\n')
+    # The social preview for links to the repository, 1280 by 640: the lockup and one line on a page, on the faint
+    # grid of the exercise book. Everything that matters stays inside x 160 to 1120 and y 80 to 560, because sites
+    # crop the edges. The lockup spans x -92 to 395 at 1.25 (the wordmark is 277 wide in Fraunces), so x 451 centers
+    # it. The text is live, so the render needs Fraunces and Atkinson Hyperlegible Next (README.md).
+    grid = (f'<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 H 0 V 40" '
+            f'fill="none" stroke="{lt["line"]}" stroke-width="2"/></pattern></defs>'
+            f'<rect width="1280" height="640" fill="{lt["paper"]}"/><rect width="1280" height="640" fill="url(#grid)"/>'
+            f'<rect x="160" y="80" width="960" height="480" rx="28" fill="{lt["paper"]}" stroke="{lt["line"]}" '
+            f'stroke-width="2"/>')
+    line = "".join(f'<tspan x="640" y="{y}">{text}</tspan>' for y, text in
+                   ((436, "Self-hosted task library, worksheet engine"), (478, "and checker that AI clients use over MCP")))
+    write("social-preview.svg",
+          f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img">'
+          f'<title>Phyllon: self-hosted task library, worksheet engine and checker that AI clients use over MCP</title>'
+          f'{grid}<g transform="translate(451 265) scale(1.25)">{lock}</g>'
+          f'<text text-anchor="middle" font-family="Atkinson Hyperlegible Next, system-ui, sans-serif" font-size="32" '
+          f'fill="{lt["muted"]}">{line}</text></svg>\n')
 
     write("palette.json", json.dumps({"name": "Frühling", "chosen": "2026-10-29", "meaning": MEANING,
                                       "light": lt, "dark": dk}, ensure_ascii=False, indent=2) + "\n")

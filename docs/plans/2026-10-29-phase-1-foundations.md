@@ -376,10 +376,10 @@ Done: merged in cd4d0e0 (#5) on 2026-10-30.
   `integration (18)`, `pr-title`, `sign-off`, `markdown`, `scripts` and
   `dependency-review`, which the ruleset in Task 7 names exactly; the `scripts`
   job, which later tasks extend with their script tests. Every job of `ci.yml`
-  is a required check, and a task that adds a job adds its name to
-  `scripts/github-settings.sh`.
+  and the `pr-title` job of `pr-title.yml` is a required check, and a task that
+  adds a job adds its name to `scripts/github-settings.sh`.
 
-- [ ] **Step 1: Write the failing script tests** in `scripts/ci/test.sh`.
+- [x] **Step 1: Write the failing script tests** in `scripts/ci/test.sh`.
       Titles: `feat(web): add the shell` passes;
       `build(deps): bump axum from 0.8.4 to 0.8.5` passes; `Update stuff` fails;
       `feat:` fails; a valid title of 73 characters fails. Sign-off, in a
@@ -387,18 +387,18 @@ Done: merged in cd4d0e0 (#5) on 2026-10-30.
       passes; a commit without one fails and the output names its SHA; a
       sign-off for a different person than the author fails; a commit by
       `dependabot[bot]` passes without one.
-- [ ] **Step 2: Run them.** Run `scripts/ci/test.sh`. Expected: every case
+- [x] **Step 2: Run them.** Run `scripts/ci/test.sh`. Expected: every case
       fails, because the scripts do not exist.
-- [ ] **Step 3: Write `check-pr-title.sh TITLE`,** which accepts
+- [x] **Step 3: Write `check-pr-title.sh TITLE`,** which accepts
       <!-- markdownlint-disable-next-line MD013 -->
       `^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: \S.*$`
       up to 72 characters.
-- [ ] **Step 4: Write `check-signoff.sh BASE HEAD`,** which checks every commit
+- [x] **Step 4: Write `check-signoff.sh BASE HEAD`,** which checks every commit
       in `BASE..HEAD` for a `Signed-off-by:` line equal to
       `<author name> <author email>`, exempting the author `dependabot[bot]`.
-- [ ] **Step 5: Run the script tests.** Run `scripts/ci/test.sh`. Expected: all
+- [x] **Step 5: Run the script tests.** Run `scripts/ci/test.sh`. Expected: all
       pass.
-- [ ] **Step 6: Write `ci.yml`.** Triggers `pull_request` and `push` to `main`;
+- [x] **Step 6: Write `ci.yml`.** Triggers `pull_request` and `push` to `main`;
       `permissions: {}` at the top; `actions/checkout` with
       `persist-credentials: false` in every job. Jobs: `gate` (installs nextest,
       shear and deny with a pinned `taiki-e/install-action`, caches with a
@@ -418,20 +418,22 @@ Done: merged in cd4d0e0 (#5) on 2026-10-30.
       Unicode-3.0, MPL-2.0, CC0-1.0 and AGPL-3.0-or-later). It covers what
       `cargo deny` does not, the npm tooling and the GitHub Actions (Mika,
       2026-10-30).
-- [ ] **Step 7: Write the other workflows.** `workflows.yml`: on pull requests
+- [x] **Step 7: Write the other workflows.** `workflows.yml`: on pull requests
       touching `.github/**`, zizmor and actionlint, both pinned. `nightly.yml`:
       daily at 03:17 UTC, `cargo deny check advisories`. `scorecard.yml`:
       weekly, the OpenSSF Scorecard action with `publish_results: true` and only
       the permissions its README names.
-- [ ] **Step 8: Write `dependabot.yml`.** Ecosystems `cargo`, `github-actions`,
+- [x] **Step 8: Write `dependabot.yml`.** Ecosystems `cargo`, `github-actions`,
       `docker`, `docker-compose`, `npm` and `rust-toolchain`, all at `/`,
       weekly, with `cooldown: default-days: 7` and commit prefixes `build(deps)`
       (and `ci(deps)` for actions), so Dependabot's titles pass `pr-title`.
-- [ ] **Step 9: Lint the workflows locally.** Run `actionlint` and
+- [x] **Step 9: Lint the workflows locally.** Run `actionlint` and
       `zizmor .github/workflows`. Expected: no findings.
-- [ ] **Step 10: Ship.** Title:
+- [x] **Step 10: Ship.** Title:
       `ci: run the gate, the title and sign-off checks on every pull request`.
       Expected on the pull request: all jobs green.
+
+Done: merged in 8b60a3b (#7) on 2026-10-30.
 
 ## Part 3: GitHub settings (PHY-12)
 
