@@ -23,8 +23,20 @@ async function expectNoViolations(page: Page): Promise<void> {
 
 for (const colorScheme of schemes) {
   test.describe(`${colorScheme} scheme`, () => {
+    // Every request of every test is recorded, so a page or an axe run that
+    // reaches another origin fails whichever test it happens in.
+    let urls: string[] = [];
+
     test.beforeEach(async ({ page }) => {
+      urls = [];
+      page.on("request", (request) => urls.push(request.url()));
       await page.emulateMedia({ colorScheme });
+    });
+
+    test.afterEach(async ({ baseURL }) => {
+      const origin = new URL(baseURL ?? "").origin;
+      const foreign = urls.filter((url) => new URL(url).origin !== origin);
+      expect(foreign, `requests outside ${origin}`).toEqual([]);
     });
 
     test("start page has no accessibility violations", async ({ page }) => {
@@ -39,15 +51,11 @@ for (const colorScheme of schemes) {
       await expectNoViolations(page);
     });
 
-    test("no request leaves the origin", async ({ page, baseURL }) => {
-      const origin = new URL(baseURL ?? "").origin;
-      const urls: string[] = [];
-      page.on("request", (request) => urls.push(request.url()));
+    // The check itself runs after each test; this one makes sure the start
+    // page's own requests reach the list, or an empty list would pass.
+    test("no request leaves the origin", async ({ page }) => {
       await page.goto("/", { waitUntil: "networkidle" });
-      // The page itself must show up, or an empty list would pass.
       expect(urls.length).toBeGreaterThan(0);
-      const foreign = urls.filter((url) => new URL(url).origin !== origin);
-      expect(foreign, `requests outside ${origin}`).toEqual([]);
     });
 
     test("screenshot of the start page", async ({ page }) => {
