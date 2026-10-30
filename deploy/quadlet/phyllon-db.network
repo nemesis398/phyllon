@@ -1,0 +1,4 @@
+# Phyllon's network to PostgreSQL. Internal: no route out, and nothing
+# outside reaches PostgreSQL. Podman names it systemd-phyllon-db.
+[Network]
+Internal=true
