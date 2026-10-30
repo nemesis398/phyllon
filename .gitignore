@@ -13,3 +13,7 @@ node_modules/
 # Local deployment secrets and settings (compose.yaml)
 secrets/
 .env
+
+# Playwright output (tests/browser/)
+test-results/
+playwright-report/
