@@ -476,7 +476,8 @@ cat >"$pristine/rulesets_42.json" <<'JSON'
     {"context": "integration (18)", "integration_id": 15368},
     {"context": "sign-off", "integration_id": 15368}, {"context": "markdown", "integration_id": 15368},
     {"context": "dependency-review", "integration_id": 15368},
-    {"context": "stack-docker", "integration_id": 15368}]}}]}
+    {"context": "stack-docker", "integration_id": 15368},
+    {"context": "browser", "integration_id": 15368}]}}]}
 JSON
 
 # The fixtures of the running test.
