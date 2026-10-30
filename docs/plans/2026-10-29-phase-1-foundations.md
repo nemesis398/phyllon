@@ -710,7 +710,7 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
   the stack up from `.env.example`, runs every check below and tears it down;
   `scripts/posture.sh ENGINE PROJECT`, which exits 1 and lists each gap.
 
-- [ ] **Step 1: Write `compose.yaml`** with the three services, the two networks
+- [x] **Step 1: Write `compose.yaml`** with the three services, the two networks
       (`edge`, and `db` with `internal: true`) and the volumes `db-data` and
       `caddy-data`, as the design's table describes. `phyllon` uses
       `image: ${PHYLLON_IMAGE:-ghcr.io/nemesis398/phyllon:0.1}`,
@@ -728,30 +728,30 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
       `security_opt: [no-new-privileges:true]`, memory and pids limits, a
       healthcheck and a non-root user; `phyllon` also gets `read_only: true` and
       a tmpfs on `/tmp`.
-- [ ] **Step 2: Write `.env.example`:** `COMPOSE_PROFILES=proxy`,
+- [x] **Step 2: Write `.env.example`:** `COMPOSE_PROFILES=proxy`,
       `PHYLLON_DOMAIN=localhost`, `HTTP_PORT=8080`, `HTTPS_PORT=8443`,
       `PHYLLON_IMAGE=ghcr.io/nemesis398/phyllon:0.1`.
-- [ ] **Step 3: Write `deploy/Caddyfile`.** Global options `http_port 8080`,
+- [x] **Step 3: Write `deploy/Caddyfile`.** Global options `http_port 8080`,
       `https_port 8443` and `auto_https disable_redirects`; an
       `http://{$PHYLLON_DOMAIN}` site that redirects to
       `https://{host}:{$HTTPS_PORT}{uri}`; a `{$PHYLLON_DOMAIN}` site with
       `reverse_proxy phyllon:8080`. Check in the Caddy docs that ACME challenges
       are still answered on `http_port` with redirects disabled, and record that
       page in the commit body.
-- [ ] **Step 4: Write `deploy/postgres/10-roles.sh`.** It reads the two
+- [x] **Step 4: Write `deploy/postgres/10-roles.sh`.** It reads the two
       passwords from `/run/secrets/`, passes them to `psql` as variables (`-v`)
       so quoting stays safe, and in the `phyllon` database creates the `vector`
       extension, `phyllon_owner` (owner of the database) and `phyllon_runtime`
       (`LOGIN`, `CONNECT`, `USAGE` on `public`, and default privileges
       `SELECT, INSERT, UPDATE, DELETE` on tables and `USAGE, SELECT` on
       sequences that `phyllon_owner` creates; no `CREATE`).
-- [ ] **Step 5: Write `scripts/posture.sh`.** For each container of the project,
+- [x] **Step 5: Write `scripts/posture.sh`.** For each container of the project,
       from `inspect`: not privileged; not on the host network; `CapDrop`
       includes `ALL`; `no-new-privileges` set; memory and pids limits set; a
       healthcheck defined; no mount of `docker.sock` or `podman.sock`; a
       non-root user; port bindings only on `proxy`; and for `phyllon` a
       read-only root.
-- [ ] **Step 6: Write `scripts/stack-test.sh`.** It creates the three secrets
+- [x] **Step 6: Write `scripts/stack-test.sh`.** It creates the three secrets
       the way the install guide will (`mkdir -m 700 secrets`, then
       `(umask 222; openssl rand -base64 32 > secrets/<name>)` for each), copies
       `.env.example`, sets `PHYLLON_IMAGE` to a locally built image when given,
@@ -761,15 +761,17 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
       holds no `trust` and no `md5` rule; `CREATE TABLE t (i int)` as
       `phyllon_runtime` fails with "permission denied"; `scripts/posture.sh`
       passes. It always runs `compose down -v` at the end.
-- [ ] **Step 7: Run it.** Run `scripts/stack-test.sh docker` with the image from
+- [x] **Step 7: Run it.** Run `scripts/stack-test.sh docker` with the image from
       Task 11. Expected: every check passes; the posture script prints its
       passed count.
-- [ ] **Step 8: Add the `stack-docker` job** to `ci.yml`: build the image from
+- [x] **Step 8: Add the `stack-docker` job** to `ci.yml`: build the image from
       the pull request, run `scripts/stack-test.sh docker` with it. Add
       `stack-docker` to the required checks in `scripts/github-settings.sh` and
       apply after Mika confirms.
-- [ ] **Step 9: Ship.** Title:
+- [x] **Step 9: Ship.** Title:
       `feat(deploy): add the compose stack with Caddy and PostgreSQL`.
+
+Done: merged in ccea2b3 (#20) on 2026-10-30; stack-docker required from then on.
 
 ### Task 13: Quadlet units and the Podman check (spike first)
 
