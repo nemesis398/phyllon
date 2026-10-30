@@ -29,10 +29,12 @@ const READY_TIMEOUT: Duration = Duration::from_secs(2);
 /// from [`PgConnectOptions::new_without_pgpass`], which skips `~/.pgpass`, and
 /// every setting that sqlx would otherwise read from a `PG*` environment
 /// variable is set here: host, port, user, database, password, TLS mode and
-/// application name. The exceptions are `PGOPTIONS`, the TLS certificate
-/// paths and the extra float digits: sqlx 0.9.0 offers no way to clear
-/// `PGOPTIONS`, which only adds session parameters, and the certificate paths
-/// do nothing with TLS off.
+/// application name. The exceptions are `PGOPTIONS` and the TLS certificate
+/// paths, which sqlx 0.9.0 offers no way to clear. The certificate paths do
+/// nothing with TLS off. `PGOPTIONS` reaches the server in the startup packet
+/// and can change any session setting, such as `search_path` or
+/// `default_transaction_read_only`, so `serve` refuses to start while it is
+/// set.
 ///
 /// The password reaches sqlx only through the connect options, which are not
 /// logged.
