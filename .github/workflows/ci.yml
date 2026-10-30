@@ -120,9 +120,13 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
 
-  # Fails on a new or bumped dependency with a known vulnerability of any
-  # severity, or with a license outside deny.toml's allowlist. It reads
-  # GitHub's dependency graph, which public repositories have.
+  # Reviews the dependencies a pull request adds or changes, in every
+  # ecosystem GitHub's dependency graph sees (crates, npm, actions) and in
+  # every scope: runtime, development and unknown. It fails when an added
+  # version has a known advisory of any severity, or when an added or changed
+  # dependency has a license outside deny.toml's allowlist. Dependencies the
+  # pull request does not touch are not reviewed; cargo deny covers the whole
+  # tree. Public repositories have the dependency graph.
   dependency-review:
     name: dependency-review
     if: github.event_name == 'pull_request'
@@ -136,15 +140,22 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: low
+          # The default is runtime only, which skips every npm dev dependency
+          # and any change the graph labels unknown.
+          fail-on-scopes: runtime, development, unknown
+          # A reviewed exception for an advisory goes into allow-ghsas, one
+          # GHSA ID with its reason each. There are none, so a pull request
+          # that adds a version with an open advisory fails, dev-only or not,
+          # such as katex or re2js in the markdownlint tree.
           # The same list as [licenses] allow in deny.toml.
           allow-licenses: >-
             MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause,
             BSD-3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0, CC0-1.0,
             AGPL-3.0-or-later
           # argparse (2.0.1 Python-2.0, 3.0.3 PSF-2.0) is a dev-only
-          # dependency of markdownlint-cli2 and never ships in the binary. The
-          # action matches the purl by type and name and ignores the version,
-          # so this covers both.
+          # dependency of markdownlint-cli2 and never ships in the binary, so
+          # its license is not checked. The action matches the purl by type and
+          # name and ignores the version, so this covers both.
           allow-dependencies-licenses: pkg:npm/argparse
 
   markdown:
