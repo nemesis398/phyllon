@@ -450,7 +450,7 @@ Done: merged in 8b60a3b (#7) on 2026-10-30.
 - Produces: `scripts/github-settings.sh audit`, which exits 0 when every setting
   matches and lists each drift otherwise.
 
-- [ ] **Step 1: Write the expected settings once,** as a table inside
+- [x] **Step 1: Write the expected settings once,** as a table inside
       `scripts/github-settings.sh` that both `apply` and `audit` read: homepage
       `https://phyllon.de`; Discussions on; squash merges only, with the commit
       title from the pull request title and the message from the commit messages
@@ -464,24 +464,26 @@ Done: merged in 8b60a3b (#7) on 2026-10-30.
       linear history and signed commits (Mika, 2026-10-30; GitHub signs squash
       merges and Dependabot's commits, so nothing legitimate breaks), and blocks
       force pushes and deletion, with no bypass actors.
-- [ ] **Step 2: Run the audit before applying.** Run
+- [x] **Step 2: Run the audit before applying.** Run
       `scripts/github-settings.sh audit`. Expected: exit 1, listing what differs
       today (homepage, Discussions, merge methods, reporting, Dependabot,
       CodeQL, immutable releases, fork approval, ruleset).
-- [ ] **Step 3: Apply, after Mika confirms.** These change a public repository:
+- [x] **Step 3: Apply, after Mika confirms.** These change a public repository:
       show Mika the list from Step 2 in the question dialog, then run
       `scripts/github-settings.sh apply`.
-- [ ] **Step 4: Run the audit again.** Expected: exit 0. Also check the
+- [x] **Step 4: Run the audit again.** Expected: exit 0. Also check the
       maintainer account: `gh api user --jq .two_factor_authentication` prints
       `true`.
-- [ ] **Step 5: Build the social preview** as a 1280 by 640 SVG from the lockup
+- [x] **Step 5: Build the social preview** as a 1280 by 640 SVG from the lockup
       and the palette, rendered to PNG with `rsvg-convert`. Mika uploads the PNG
       in the repository settings, since the API cannot.
-- [ ] **Step 6: Mika sets the redirect.** Mika points `phyllon.de` at
+- [x] **Step 6: Mika sets the redirect.** Mika points `phyllon.de` at
       `https://github.com/nemesis398/phyllon` with an HTTPS redirect. Check:
       `curl -sI https://phyllon.de` shows a 301 or 308 with that `location`.
-- [ ] **Step 7: Ship** the script and the preview. Title:
+- [x] **Step 7: Ship** the script and the preview. Title:
       `chore: keep the GitHub settings in a script`.
+
+Done: merged in ff2db67 (#11) on 2026-10-30.
 
 ## Part 4: The skeleton (PHY-16)
 
