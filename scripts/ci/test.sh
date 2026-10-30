@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
-# check-signoff.sh, and for scripts/github-settings.sh. The title tests call the
-# script with a title; the sign-off tests build a git repository in a temporary
-# directory, make commits with explicit identities and run the script inside
-# it, with PR_AUTHOR and GITHUB_ACTIONS set as the test says. The settings tests
-# put a stub gh first on PATH that answers from fixture JSON, so they never
-# reach GitHub. Run it with:
+# check-signoff.sh, and for scripts/github-settings.sh and scripts/posture.sh.
+# The title tests call the script with a title; the sign-off tests build a git
+# repository in a temporary directory, make commits with explicit identities
+# and run the script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the
+# test says. The settings tests put a stub gh first on PATH that answers from
+# fixture JSON, so they never reach GitHub, and the posture tests do the same
+# with a stub container engine. Run it with:
 #
 #   scripts/ci/test.sh
 #
@@ -471,7 +472,8 @@ cat >"$pristine/rulesets_42.json" <<'JSON'
     {"context": "integration (17)", "integration_id": 15368},
     {"context": "integration (18)", "integration_id": 15368},
     {"context": "sign-off", "integration_id": 15368}, {"context": "markdown", "integration_id": 15368},
-    {"context": "dependency-review", "integration_id": 15368}]}}]}
+    {"context": "dependency-review", "integration_id": 15368},
+    {"context": "stack-docker", "integration_id": 15368}]}}]}
 JSON
 
 # The fixtures of the running test.
@@ -687,6 +689,239 @@ apply_creates_a_missing_ruleset() {
 	expect_no_out "PUT repos/nemesis398/phyllon/rulesets"
 }
 
+# Container posture. The stub engine, linked as docker and as podman, answers
+# `ps` with the Ids of $POSTURE_FIXTURE when the filter names the project
+# phyllon-stack-test, and `inspect` with the whole file. The fixtures are real
+# inspect output of the stack, cut to the fields posture.sh reads: Docker
+# writes CapDrop as given and the Name with a slash, Podman expands CapDrop to
+# the dropped capabilities and lists what is left in BoundingCaps.
+cat >"$scratch/bin/engine" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+ps)
+	[[ " $* " == *" label=com.docker.compose.project=phyllon-stack-test "* ]] || exit 0
+	jq -r '.[].Id' "$POSTURE_FIXTURE"
+	;;
+inspect) cat "$POSTURE_FIXTURE" ;;
+*) echo "stub engine: unexpected $*" >&2; exit 3 ;;
+esac
+STUB
+chmod +x "$scratch/bin/engine"
+ln -s engine "$scratch/bin/docker"
+ln -s engine "$scratch/bin/podman"
+posture_script="$ci_dir/../posture.sh"
+
+cat >"$scratch/posture-docker.json" <<'JSON'
+[{"Id": "a1", "Name": "/phyllon-stack-test-proxy-1",
+  "Config": {"User": "65533:65533", "Labels": {"com.docker.compose.service": "proxy"},
+   "Healthcheck": {"Test": ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_edge",
+   "CapAdd": ["CAP_NET_BIND_SERVICE"], "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
+   "Memory": 268435456, "PidsLimit": 128, "ReadonlyRootfs": true,
+   "PortBindings": {"8080/tcp": [{"HostIp": "", "HostPort": "8080"}],
+    "8443/tcp": [{"HostIp": "", "HostPort": "8443"}]}},
+  "Mounts": [{"Type": "bind", "Source": "/w/deploy/Caddyfile", "Destination": "/etc/caddy/Caddyfile"}]},
+ {"Id": "b2", "Name": "/phyllon-stack-test-phyllon-1",
+  "Config": {"User": "65532:65532", "Labels": {"com.docker.compose.service": "phyllon"},
+   "Healthcheck": {"Test": ["CMD", "/usr/local/bin/phyllon", "healthcheck"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_edge",
+   "CapAdd": null, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
+   "Memory": 536870912, "PidsLimit": 256, "ReadonlyRootfs": true, "PortBindings": {}},
+  "Mounts": [{"Type": "bind", "Source": "/w/secrets/db_runtime_password",
+   "Destination": "/run/secrets/db_runtime_password"}]},
+ {"Id": "c3", "Name": "/phyllon-stack-test-db-1",
+  "Config": {"User": "999:999", "Labels": {"com.docker.compose.service": "db"},
+   "Healthcheck": {"Test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "phyllon-stack-test_db",
+   "CapAdd": null, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true"],
+   "Memory": 1073741824, "PidsLimit": 256, "ReadonlyRootfs": true, "PortBindings": {}},
+  "Mounts": [{"Type": "volume", "Source": "/var/lib/docker/volumes/phyllon-stack-test_db-data/_data",
+   "Destination": "/var/lib/postgresql"}]}]
+JSON
+cat >"$scratch/posture-podman.json" <<'JSON'
+[{"Id": "60214719ca3b", "Name": "phyllon-stack-test-proxy-1",
+  "Config": {"User": "65533:65533", "Labels": {"com.docker.compose.service": "proxy"},
+   "Healthcheck": {"Test": ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+   "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+    "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
+   "SecurityOpt": ["no-new-privileges"], "Memory": 268435456, "PidsLimit": 128,
+   "ReadonlyRootfs": true, "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}],
+    "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8443"}]}},
+  "EffectiveCaps": ["CAP_NET_BIND_SERVICE"], "BoundingCaps": ["CAP_NET_BIND_SERVICE"],
+  "Mounts": [{"Type": "bind", "Source": "/w/deploy/Caddyfile", "Destination": "/etc/caddy/Caddyfile"}]},
+ {"Id": "013789400cc5", "Name": "phyllon-stack-test-phyllon-1",
+  "Config": {"User": "65532:65532", "Labels": {"com.docker.compose.service": "phyllon"},
+   "Healthcheck": {"Test": ["CMD", "/usr/local/bin/phyllon", "healthcheck"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+   "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+    "CAP_NET_BIND_SERVICE", "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
+   "SecurityOpt": ["no-new-privileges"], "Memory": 536870912, "PidsLimit": 256,
+   "ReadonlyRootfs": true, "PortBindings": {}},
+  "EffectiveCaps": null, "BoundingCaps": null,
+  "Mounts": [{"Type": "bind", "Source": "/w/deploy/phyllon.toml", "Destination": "/etc/phyllon/phyllon.toml"}]},
+ {"Id": "9693f3b7e546", "Name": "phyllon-stack-test-db-1",
+  "Config": {"User": "999:999", "Labels": {"com.docker.compose.service": "db"},
+   "Healthcheck": {"Test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]}},
+  "HostConfig": {"Privileged": false, "NetworkMode": "bridge", "CapAdd": [],
+   "CapDrop": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL",
+    "CAP_NET_BIND_SERVICE", "CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT"],
+   "SecurityOpt": ["no-new-privileges"], "Memory": 1073741824, "PidsLimit": 256,
+   "ReadonlyRootfs": true, "PortBindings": {}},
+  "EffectiveCaps": null, "BoundingCaps": null,
+  "Mounts": [{"Type": "volume", "Source": "/v/phyllon-stack-test_db-data/_data", "Destination": "/var/lib/postgresql"}]}]
+JSON
+
+# The fixture of the running posture test.
+posture_fixture=""
+
+# Copies the fixture of engine $1 for the test to edit.
+new_posture() {
+	posture_fixture="$(mktemp -p "$scratch")"
+	cp -- "$scratch/posture-$1.json" "$posture_fixture"
+}
+
+# Rewrites the container of service $1 with the jq filter $2.
+edit_container() {
+	jq --arg s "$1" "map(if .Config.Labels[\"com.docker.compose.service\"] == \$s then $2 else . end)" \
+		"$posture_fixture" >"$scratch/posture-tmp.json"
+	mv -- "$scratch/posture-tmp.json" "$posture_fixture"
+}
+
+run_posture() {
+	status=0
+	out="$(PATH="$scratch/bin:$PATH" POSTURE_FIXTURE="$posture_fixture" \
+		"$posture_script" "$1" phyllon-stack-test 2>&1)" || status=$?
+}
+
+# Expects posture.sh under docker to fail and to name the gap $1.
+expect_gap() {
+	run_posture docker
+	expect_status 1
+	expect_out "$1"
+}
+
+a_compliant_docker_stack_passes() {
+	new_posture docker
+	run_posture docker
+	expect_status 0
+	expect_out "posture: 34 checks passed on 3 containers"
+}
+
+a_compliant_podman_stack_passes() {
+	new_posture podman
+	run_posture podman
+	expect_status 0
+	expect_out "posture: 34 checks passed on 3 containers"
+}
+
+a_project_without_containers_fails() {
+	new_posture docker
+	echo '[]' >"$posture_fixture"
+	run_posture docker
+	expect_status 1
+	expect_out "no containers"
+}
+
+an_unknown_engine_is_refused() {
+	new_posture docker
+	run_posture nerdctl
+	expect_status 2
+	expect_out "usage"
+}
+
+a_privileged_container_fails() {
+	new_posture docker
+	edit_container phyllon '.HostConfig.Privileged = true'
+	expect_gap "phyllon-stack-test-phyllon-1: runs privileged"
+	expect_out "posture: 1 gap, 33 of 34 checks passed"
+}
+
+the_host_network_fails() {
+	new_posture docker
+	edit_container db '.HostConfig.NetworkMode = "host"'
+	expect_gap "phyllon-stack-test-db-1: uses the host network"
+}
+
+capdrop_without_all_fails() {
+	new_posture docker
+	edit_container db '.HostConfig.CapDrop = ["NET_RAW"]'
+	expect_gap "phyllon-stack-test-db-1: does not drop all capabilities"
+}
+
+an_added_capability_fails() {
+	new_posture docker
+	edit_container phyllon '.HostConfig.CapAdd = ["SYS_ADMIN"]'
+	expect_gap "phyllon-stack-test-phyllon-1: keeps the capabilities SYS_ADMIN"
+}
+
+a_capability_left_under_podman_fails() {
+	new_posture podman
+	edit_container db '.BoundingCaps = ["CAP_NET_RAW"] | .EffectiveCaps = ["CAP_NET_RAW"]'
+	run_posture podman
+	expect_status 1
+	expect_out "phyllon-stack-test-db-1: keeps the capabilities NET_RAW"
+}
+
+a_missing_no_new_privileges_fails() {
+	new_posture docker
+	edit_container proxy '.HostConfig.SecurityOpt = ["label=disable"]'
+	expect_gap "phyllon-stack-test-proxy-1: does not set no-new-privileges"
+}
+
+a_missing_memory_limit_fails() {
+	new_posture docker
+	edit_container db '.HostConfig.Memory = 0'
+	expect_gap "phyllon-stack-test-db-1: has no memory limit"
+}
+
+a_missing_pids_limit_fails() {
+	new_posture docker
+	edit_container db '.HostConfig.PidsLimit = null'
+	expect_gap "phyllon-stack-test-db-1: has no pids limit"
+}
+
+a_missing_healthcheck_fails() {
+	new_posture docker
+	edit_container proxy 'del(.Config.Healthcheck)'
+	edit_container db '.Config.Healthcheck.Test = ["NONE"]'
+	expect_gap "phyllon-stack-test-proxy-1: has no healthcheck"
+	expect_out "phyllon-stack-test-db-1: has no healthcheck"
+}
+
+an_engine_socket_mount_fails() {
+	new_posture docker
+	edit_container proxy '.Mounts += [{"Type": "bind", "Source": "/var/run/docker.sock",
+		"Destination": "/var/run/docker.sock"}]'
+	edit_container db '.Mounts += [{"Type": "bind", "Source": "/run/user/1000/podman/podman.sock",
+		"Destination": "/engine"}]'
+	expect_gap "phyllon-stack-test-proxy-1: mounts the engine socket /var/run/docker.sock"
+	expect_out "phyllon-stack-test-db-1: mounts the engine socket /run/user/1000/podman/podman.sock"
+}
+
+a_root_user_fails() {
+	new_posture docker
+	edit_container phyllon '.Config.User = ""'
+	edit_container db '.Config.User = "0:999"'
+	edit_container proxy '.Config.User = "root"'
+	expect_gap 'phyllon-stack-test-phyllon-1: runs as root (user "")'
+	expect_out 'phyllon-stack-test-db-1: runs as root (user "0:999")'
+	expect_out 'phyllon-stack-test-proxy-1: runs as root (user "root")'
+}
+
+a_published_port_outside_the_proxy_fails() {
+	new_posture docker
+	edit_container db '.HostConfig.PortBindings = {"5432/tcp": [{"HostIp": "", "HostPort": "5432"}]}'
+	expect_gap "phyllon-stack-test-db-1: publishes a port, which only proxy may"
+}
+
+a_writable_phyllon_root_fails() {
+	new_posture docker
+	edit_container phyllon '.HostConfig.ReadonlyRootfs = false'
+	expect_gap "phyllon-stack-test-phyllon-1: has a writable root filesystem"
+}
+
 tests=(
 	a_title_with_a_scope_passes
 	a_dependabot_cargo_title_passes
@@ -736,6 +971,23 @@ tests=(
 	apply_creates_a_missing_ruleset
 	a_failed_write_stops_apply
 	an_unreadable_ruleset_list_stops_apply
+	a_compliant_docker_stack_passes
+	a_compliant_podman_stack_passes
+	a_project_without_containers_fails
+	an_unknown_engine_is_refused
+	a_privileged_container_fails
+	the_host_network_fails
+	capdrop_without_all_fails
+	an_added_capability_fails
+	a_capability_left_under_podman_fails
+	a_missing_no_new_privileges_fails
+	a_missing_memory_limit_fails
+	a_missing_pids_limit_fails
+	a_missing_healthcheck_fails
+	an_engine_socket_mount_fails
+	a_root_user_fails
+	a_published_port_outside_the_proxy_fails
+	a_writable_phyllon_root_fails
 )
 
 failed=0
