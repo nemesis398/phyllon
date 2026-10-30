@@ -664,7 +664,7 @@ Done: merged in 2559866 (#17) on 2026-10-30.
   command `serve`, running as `nonroot`; the build argument
   `PHYLLON_GIT_COMMIT`.
 
-- [ ] **Step 1: Write the Dockerfile.** Builder: `rust:1.99.1-alpine` pinned by
+- [x] **Step 1: Write the Dockerfile.** Builder: `rust:1.99.1-alpine` pinned by
       digest, `apk add musl-dev`, `cargo install --locked cargo-auditable` at a
       pinned version (the newest one at least 7 days old, matching the
       Dependabot cooldown), then `cargo auditable build --release --locked`, so
@@ -675,21 +675,23 @@ Done: merged in 2559866 (#17) on 2026-10-30.
       the top, since phase 2 may move to `distroless/cc`. `.dockerignore`
       excludes `target/`, `.git/`, `node_modules/`, `.superpowers/` and
       `secrets/`.
-- [ ] **Step 2: Build and inspect.** Run
+- [x] **Step 2: Build and inspect.** Run
       <!-- markdownlint-disable-next-line MD013 -->
       `docker build --build-arg PHYLLON_GIT_COMMIT=$(git rev-parse HEAD) -t phyllon:dev .`,
       then `docker run --rm phyllon:dev --version` (prints `phyllon 0.0.0`) and
       `docker image inspect phyllon:dev --format '{{.Config.User}}'` (prints
       `nonroot` or `65532`).
-- [ ] **Step 3: Confirm the binary is static.** Run
+- [x] **Step 3: Confirm the binary is static.** Run
       `docker run --rm --entrypoint '' phyllon:dev /usr/local/bin/phyllon --version`
       on the distroless base, which has no libc; it prints the version.
-- [ ] **Step 4: Confirm the binary lists its crates.** Copy it out of the image
+- [x] **Step 4: Confirm the binary lists its crates.** Copy it out of the image
       with `docker create` and `docker cp`, then run
       `readelf -S phyllon | grep .dep-v0` (or `objdump -h`). Expected: the
       `.dep-v0` section is there. Phase 1 stops at the section; a scanner reads
       it from Task 21 on.
-- [ ] **Step 5: Ship.** Title: `build: build a static image on distroless`.
+- [x] **Step 5: Ship.** Title: `build: build a static image on distroless`.
+
+Done: merged in 66c7a5a (#19) on 2026-10-30.
 
 ### Task 12: The compose stack and its posture
 
