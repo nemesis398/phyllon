@@ -8,30 +8,31 @@
 # what Phyllon connects as: it may read and write the tables phyllon_owner
 # creates, and create nothing.
 #
-# The passwords reach psql as variables and the SQL quotes them with :'name',
-# so no character in them can end the literal. The script never prints them.
+# psql reads each password itself, with a backtick meta-command, so no
+# password is ever on a command line, where any user of the host could read it
+# in /proc. The statements quote them with :'name', so no character in them
+# can end the literal, and the script never prints them. sed turns a final
+# "\r\n" into "\n" and psql drops the final "\n", which is how Phyllon reads a
+# password file, so both sides agree on the password. --single-transaction
+# makes a failed run leave no role behind.
 
 set -euo pipefail
 
-# Prints the content of file $1 without one trailing "\n" or "\r\n", the way
-# Phyllon reads a password file, so both sides agree on the password.
-read_password() {
-	local text
-	text="$(cat -- "$1" && printf x)"
-	text="${text%x}"
-	if [[ "$text" == *$'\r\n' ]]; then
-		text="${text%$'\r\n'}"
-	else
-		text="${text%$'\n'}"
+# psql sets a variable to an empty string when the backtick command fails, and
+# carries on, so check the files first. The content stays in this process.
+for file in /run/secrets/db_owner_password /run/secrets/db_runtime_password; do
+	if ! password="$(sed -z 's/\r\n$/\n/' "$file")" || [[ -z "$password" ]]; then
+		echo "10-roles.sh: cannot read a password from $file" >&2
+		exit 1
 	fi
-	printf '%s' "$text"
-}
+done
+unset password
 
-owner_password="$(read_password /run/secrets/db_owner_password)"
-runtime_password="$(read_password /run/secrets/db_runtime_password)"
+psql -v ON_ERROR_STOP=1 --no-psqlrc --single-transaction --username postgres \
+	--dbname phyllon --file - <<'SQL'
+\set owner_password `sed -z 's/\r\n$/\n/' /run/secrets/db_owner_password`
+\set runtime_password `sed -z 's/\r\n$/\n/' /run/secrets/db_runtime_password`
 
-psql -v ON_ERROR_STOP=1 --no-psqlrc --username postgres --dbname phyllon \
-	-v owner_password="$owner_password" -v runtime_password="$runtime_password" <<'SQL'
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE ROLE phyllon_owner LOGIN PASSWORD :'owner_password';

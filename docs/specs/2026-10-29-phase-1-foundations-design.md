@@ -139,7 +139,11 @@ everything else.
   capabilities, sets `no-new-privileges`, has memory and process limits and a
   healthcheck, and starts only after its dependencies report healthy. The
   posture script from baseline item 13 reads the `inspect` output and fails on
-  any gap.
+  any gap. The one exception is `cap_add: [NET_BIND_SERVICE]` on the proxy:
+  `/usr/bin/caddy` carries the file capability `cap_net_bind_service=ep`, so its
+  exec fails with EPERM when that capability is not in the bounding set. It only
+  allows binding ports below 1024 in the container's own network namespace, and
+  `no-new-privileges` keeps Caddy from gaining more (Mika, 2026-10-30).
 - Secrets are files. Phase 1 has three: the database passwords for the bootstrap
   superuser, the owner and the runtime role, and the install guide creates each
   with one command. They are mode 0444 inside a `secrets/` directory of mode

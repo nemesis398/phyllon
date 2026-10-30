@@ -813,7 +813,9 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
       `~/.config/phyllon/phyllon.toml`, `Image=ghcr.io/nemesis398/phyllon:0.1`
       with `AutoUpdate=registry`, and the same posture settings as compose
       (`ReadOnly=`, `DropCapability=ALL`, `NoNewPrivileges=true`, `Memory=`,
-      `PidsLimit=`).
+      `PidsLimit=`). The proxy unit adds `AddCapability=CAP_NET_BIND_SERVICE`,
+      for the same reason as compose: the caddy binary carries that file
+      capability and does not start without it (Mika, 2026-10-30).
 - [ ] **Step 5: Write `scripts/quadlet-test.sh`,** which installs the units for
       the VM user, creates the Podman secrets, runs
       `systemctl --user daemon-reload` and starts them, waits for

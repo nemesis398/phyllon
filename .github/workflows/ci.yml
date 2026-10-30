@@ -158,8 +158,8 @@ jobs:
 
   # The compose stack under Docker, with the image built from this commit:
   # stack-test.sh starts it from .env.example, checks TLS, the database roles
-  # and SCRAM, and ends with the posture script. podman.yml runs the same
-  # under rootless Podman with SELinux.
+  # and SCRAM, and ends with the posture script. The plan's Task 13 adds the
+  # same run under rootless Podman with SELinux.
   stack-docker:
     name: stack-docker
     runs-on: ubuntu-latest
