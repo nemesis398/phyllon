@@ -714,7 +714,9 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
       (`edge`, and `db` with `internal: true`) and the volumes `db-data` and
       `caddy-data`, as the design's table describes. `phyllon` uses
       `image: ${PHYLLON_IMAGE:-ghcr.io/nemesis398/phyllon:0.1}`,
-      `PHYLLON_CONFIG=/etc/phyllon/phyllon.toml`, the runtime password secret, a
+      `PHYLLON_CONFIG=/etc/phyllon/phyllon.toml`, the runtime password file
+      mounted read-only at `/run/secrets/db_runtime_password` (a `volumes:` bind
+      mount with `:ro,z`, not compose `secrets:`; Mika, 2026-10-30), a
       healthcheck of `["CMD", "/usr/local/bin/phyllon", "healthcheck"]`, and
       `depends_on: db: condition: service_healthy`. `db` runs as `999:999` with
       `POSTGRES_DB=phyllon`, `POSTGRES_PASSWORD_FILE`,
@@ -750,9 +752,10 @@ Done: merged in 66c7a5a (#19) on 2026-10-30.
       non-root user; port bindings only on `proxy`; and for `phyllon` a
       read-only root.
 - [ ] **Step 6: Write `scripts/stack-test.sh`.** It creates the three secrets
-      the way the install guide will (`umask 077; openssl rand -base64 32`),
-      copies `.env.example`, sets `PHYLLON_IMAGE` to a locally built image when
-      given, runs `compose up -d --wait`, and checks:
+      the way the install guide will (`mkdir -m 700 secrets`, then
+      `(umask 222; openssl rand -base64 32 > secrets/<name>)` for each), copies
+      `.env.example`, sets `PHYLLON_IMAGE` to a locally built image when given,
+      runs `compose up -d --wait`, and checks:
       `curl -fsk https://localhost:8443/healthz` and `/readyz` answer 200;
       `SHOW password_encryption` answers `scram-sha-256`; `pg_hba_file_rules`
       holds no `trust` and no `md5` rule; `CREATE TABLE t (i int)` as

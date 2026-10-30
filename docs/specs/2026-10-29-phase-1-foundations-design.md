@@ -76,9 +76,9 @@ One binary with two subcommands:
 
 **Config.** `phyllon.toml`, found through `--config` or `PHYLLON_CONFIG`. No key
 holds a secret: a secret is a `*_file` key that names a file, such as
-`database_password_file`, which compose and Quadlet fill from their secrets.
-Unknown keys are an error, so a typo cannot fall back to a default without
-anyone noticing.
+`database_password_file`, which compose fills with a read-only bind mount and
+Quadlet from a Podman secret (Mika, 2026-10-30). Unknown keys are an error, so a
+typo cannot fall back to a default without anyone noticing.
 
 **Code shape.** Modules `config`, `http` (router, headers, errors), `web`
 (templates and assets), `db` (pool and readiness) and `cli`. Errors are one type
@@ -142,7 +142,12 @@ everything else.
   any gap.
 - Secrets are files. Phase 1 has three: the database passwords for the bootstrap
   superuser, the owner and the runtime role, and the install guide creates each
-  with one command.
+  with one command. They are mode 0444 inside a `secrets/` directory of mode
+  0700, and each service mounts only the ones it needs, read-only with the `z`
+  relabel, under `volumes:` rather than compose `secrets:`. Compose ignores
+  `uid`, `gid` and `mode` for file secrets and rootless Podman shows the host
+  owner as root, so a non-root service could not read a 0600 file, and SELinux
+  denies a mount it has not relabeled (Mika, 2026-10-30).
 - Caddy gets a certificate on its own for a public hostname and uses its
   internal CA for `localhost`, so the quickstart and a real installation share
   one file.

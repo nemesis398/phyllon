@@ -1,0 +1,23 @@
+# Caddy in front of Phyllon. PHYLLON_DOMAIN and HTTPS_PORT come from
+# compose.yaml's environment. Caddy gets a certificate on its own for a public
+# name and uses its internal CA for localhost.
+#
+# Caddy runs as a non-root user and cannot bind ports below 1024, so it
+# listens on 8080 and 8443 and compose publishes them as HTTP_PORT and
+# HTTPS_PORT. Its own redirect would point at 8443, which the outside does not
+# see, so it is off and the site below redirects to the published port. ACME
+# HTTP challenges are still answered on http_port: Caddy handles them before
+# any site route.
+{
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+}
+
+http://{$PHYLLON_DOMAIN} {
+	redir https://{host}:{$HTTPS_PORT}{uri}
+}
+
+{$PHYLLON_DOMAIN} {
+	reverse_proxy phyllon:8080
+}
