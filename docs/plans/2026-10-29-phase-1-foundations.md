@@ -1044,24 +1044,26 @@ Done: merged in 169dbb3 (#26) and 154cca3 (#27) on 2026-10-30.
   `src/*/`) with the headings `` ## `name` `` in `docs/map.md`, and exits 1
   naming each module the map lacks and each heading without a module.
 
-- [ ] **Step 1: Write the failing cases:** a matching map passes; a module
+- [x] **Step 1: Write the failing cases:** a matching map passes; a module
       without a heading fails and names it; a heading without a module fails and
       names it. Run them; they fail.
-- [ ] **Step 2: Write `check-map.sh`;** the cases pass.
-- [ ] **Step 3: Write `docs/map.md`** for `cli`, `config`, `db`, `http` and
+- [x] **Step 2: Write `check-map.sh`;** the cases pass.
+- [x] **Step 3: Write `docs/map.md`** for `cli`, `config`, `db`, `http` and
       `web`: what each owns, its invariants (for example: every response passes
       `with_security_layers`; no secret reaches a log or a `Debug` string; the
       web routes and the MCP routes of phase 2 never share a router), and its
       decision records.
-- [ ] **Step 4: Write records 0002 to 0004** in the format of 0001. 0004 carries
+- [x] **Step 4: Write records 0002 to 0004** in the format of 0001. 0004 carries
       the comparison with Traefik from 2026-10-29: Caddy 2.11.7 against Traefik
       3.7.16, the images at 24.9 MB against 55.4 MB, the container socket that
       label discovery needs, and the advisory counts with the note that most of
       them hit features Phyllon does not use.
-- [ ] **Step 5: Run the map check** on the real tree and add it to the `scripts`
+- [x] **Step 5: Run the map check** on the real tree and add it to the `scripts`
       job. Expected: exit 0.
-- [ ] **Step 6: Ship.** Title:
+- [x] **Step 6: Ship.** Title:
       `docs: add the module map and the first decision records`.
+
+Done: merged in 8f9e0cc (#28) on 2026-10-30.
 
 ## Part 8: Releases (PHY-17)
 
