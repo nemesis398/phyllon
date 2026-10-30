@@ -35,6 +35,11 @@ pub enum ConfigError {
     /// offending value, which is not a secret.
     #[error("public_url must start with https:// or http://, got {0:?}")]
     PublicUrl(String),
+    /// `source_url` is set but does not start with `https://` or `http://`, so
+    /// an empty value and a `javascript:` link are refused. Holds the offending
+    /// value, which is not a secret.
+    #[error("source_url must start with https:// or http://, got {0:?}")]
+    SourceUrl(String),
     /// A secret file named by the config could not be read as text.
     #[error("cannot read the secret file for {key} at {}: {source}", .path.display())]
     Secret {
@@ -124,7 +129,8 @@ pub struct Config {
     /// that it starts with `https://` or `http://`.
     pub public_url: String,
     /// Where the running version's source code is offered, if the operator
-    /// sets it.
+    /// sets it. [`Config::load`] guarantees that a set value starts with
+    /// `https://` or `http://`, because the site links to it.
     #[serde(default)]
     pub source_url: Option<String>,
     /// The database connection.
@@ -141,19 +147,28 @@ impl Config {
     ///
     /// Returns [`ConfigError::Read`] when the file cannot be read,
     /// [`ConfigError::Parse`] when it is not a valid config, and
-    /// [`ConfigError::PublicUrl`] when `public_url` has no HTTP(S) scheme.
+    /// [`ConfigError::PublicUrl`] or [`ConfigError::SourceUrl`] when
+    /// `public_url` or a set `source_url` has no HTTP(S) scheme.
     pub fn load(path: &Path) -> Result<Config, ConfigError> {
         let text = fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
             source,
         })?;
         let config: Config = toml::from_str(&text)?;
-        if !(config.public_url.starts_with("https://") || config.public_url.starts_with("http://"))
-        {
+        if !has_http_scheme(&config.public_url) {
             return Err(ConfigError::PublicUrl(config.public_url));
+        }
+        if let Some(url) = config.source_url.as_deref()
+            && !has_http_scheme(url)
+        {
+            return Err(ConfigError::SourceUrl(url.to_owned()));
         }
         Ok(config)
     }
+}
+
+fn has_http_scheme(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
 }
 
 fn default_listen() -> SocketAddr {

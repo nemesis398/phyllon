@@ -572,7 +572,7 @@ into `AppState`. `ready` uses sqlx's `ping` rather than a `SELECT 1` string; it
 does the same job and keeps the offline query data out of phase 1, until phase
 2's first query macro needs it.
 
-- [ ] **Step 1: Write the failing tests** in `tests/http.rs`, driving the router
+- [x] **Step 1: Write the failing tests** in `tests/http.rs`, driving the router
       with `tower::ServiceExt::oneshot` and a pool pointed at `127.0.0.1:1`:
       `healthz_answers_200`; `head_healthz_answers_200`;
       `readyz_is_503_when_the_database_is_unreachable`;
@@ -588,17 +588,19 @@ does the same job and keeps the offline query data out of phase 1, until phase
       `source_url_prefers_the_config`;
       `source_url_without_a_commit_points_at_the_repository`; and, ignored,
       `readyz_is_200_with_a_database`.
-- [ ] **Step 2: Run them.** Run `cargo nextest run --test http`. Expected:
+- [x] **Step 2: Run them.** Run `cargo nextest run --test http`. Expected:
       compile errors.
-- [ ] **Step 3: Implement `db.rs`, `headers.rs` and `http/mod.rs`** to the
+- [x] **Step 3: Implement `db.rs`, `headers.rs` and `http/mod.rs`** to the
       interface. The fallback answers 404 and `AppError` a 500, both with a
       plain body for now; Task 15 replaces them with the branded pages.
-- [ ] **Step 4: Run the tests.** Expected: nine passes, one ignored. Run the
+- [x] **Step 4: Run the tests.** Expected: nine passes, one ignored. Run the
       ignored one against a local PostgreSQL with
       `cargo nextest run --test http --run-ignored only`; it passes. Then
       `scripts/check.sh`.
-- [ ] **Step 5: Ship.** Title:
+- [x] **Step 5: Ship.** Title:
       `feat(http): serve health and readiness with the security headers`.
+
+Done: merged in c4d2cb3 (#15) on 2026-10-30.
 
 ### Task 10: The command line, `serve` and `healthcheck`
 
