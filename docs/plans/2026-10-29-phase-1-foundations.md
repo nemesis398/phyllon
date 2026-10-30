@@ -843,7 +843,7 @@ Done: merged in 1f7f905 (#21) and c6b94fd (#22) on 2026-10-30.
 - Consumes: the commands `scripts/stack-test.sh` and `scripts/quadlet-test.sh`
   run, which the guide repeats for a person.
 
-- [ ] **Step 1: Write `docs/install.md`.** Sections: what you need; the
+- [x] **Step 1: Write `docs/install.md`.** Sections: what you need; the
       quickstart on `localhost` (secrets, `.env`, `compose up -d --wait`,
       `https://localhost:8443`, why the browser warns about Caddy's local CA); a
       public installation (`PHYLLON_DOMAIN`, ports 80 and 443, and under
@@ -853,18 +853,20 @@ Done: merged in 1f7f905 (#21) and c6b94fd (#22) on 2026-10-30.
       releases, moving to `0.2` is a deliberate edit, migrations only ever
       arrive with a minor version); what phase 1 cannot do yet. Task 21 adds
       "Verifying a release".
-- [ ] **Step 2: Write `deploy/examples/compose.traefik.yaml`,** an override that
+- [x] **Step 2: Write `deploy/examples/compose.traefik.yaml`,** an override that
       removes nothing from `compose.yaml` but attaches `phyllon` to an external
       network `proxy` with the Traefik labels `traefik.enable=true`, a
       `Host(...)` router rule from `PHYLLON_DOMAIN`, the `websecure` entry
       point, a `certresolver` placeholder named as one, and
       `loadbalancer.server.port=8080`. The guide explains removing `proxy` from
       `COMPOSE_PROFILES`.
-- [ ] **Step 3: Check the override.** Run
+- [x] **Step 3: Check the override.** Run
       `docker compose -f compose.yaml -f deploy/examples/compose.traefik.yaml config`
       with a stub external network. Expected: valid output with the labels on
       `phyllon`.
-- [ ] **Step 4: Ship.** Title: `docs: add the install guide`.
+- [x] **Step 4: Ship.** Title: `docs: add the install guide`.
+
+Done: merged in 4dd489c (#23) on 2026-10-30.
 
 ## Part 6: The shell (PHY-18)
 
