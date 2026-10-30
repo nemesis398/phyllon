@@ -30,6 +30,8 @@ unset password
 
 psql -v ON_ERROR_STOP=1 --no-psqlrc --single-transaction --username postgres \
 	--dbname phyllon --file - <<'SQL'
+-- A failing CREATE ROLE would otherwise log its text, password included.
+SET log_min_error_statement = panic;
 \set owner_password `sed -z 's/\r\n$/\n/' /run/secrets/db_owner_password`
 \set runtime_password `sed -z 's/\r\n$/\n/' /run/secrets/db_runtime_password`
 

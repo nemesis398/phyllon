@@ -45,6 +45,12 @@ inspect="$("$engine" inspect $ids 2>/dev/null)" || {
 	exit 2
 }
 
+# ps found containers, so an answer without any is an error, not a pass.
+if [[ "$(jq 'if type == "array" then length else -1 end' <<<"$inspect" 2>/dev/null)" == 0 ]]; then
+	echo "posture: no containers in the inspect output, though ps listed some" >&2
+	exit 2
+fi
+
 # One line per check: "ok" or "gap <container>: <what>". Input that is not a
 # list of containers, or a field of the wrong type, makes jq fail, which is an
 # error (exit 2) rather than a gap.
@@ -52,7 +58,7 @@ results="$(jq -r '
 	def caps: map(ascii_upcase | ltrimstr("CAP_"));
 	def socket_file: test("(^|/)(docker|podman|containerd)\\.sock$");
 	def socket_dir:
-		test("^(/|/var/?|(/var)?/run(/user/[0-9]+(/podman)?|/podman|/docker|/containerd)?/?)$");
+		test("^(/|/var/?|(/var)?/run(/user(/[0-9]+(/podman)?)?|/podman|/docker|/containerd)?/?)$");
 	if type != "array" then error("not a list of containers") else .[] end
 	| (.Name | ltrimstr("/")) as $name
 	| (.Config.Labels["com.docker.compose.service"] // "") as $service

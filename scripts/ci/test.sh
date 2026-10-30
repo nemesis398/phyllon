@@ -914,7 +914,8 @@ an_engine_socket_mount_fails() {
 # A directory that holds an engine socket gives the same access.
 an_engine_socket_directory_mount_fails() {
 	local dir
-	for dir in /run /var/run/ /run/user/1000/podman /run/podman /run/docker /run/containerd/containerd.sock; do
+	for dir in /run /var/run/ /run/user /run/user/ /run/user/1000/podman /run/podman /run/docker \
+		/run/containerd/containerd.sock; do
 		new_posture docker
 		# shellcheck disable=SC2016 # $d is a jq variable
 		edit_container db --arg d "$dir" '.Mounts += [{"Type": "bind", "Source": $d, "Destination": "/host"}]'
@@ -973,6 +974,16 @@ the_host_pid_and_ipc_namespaces_fail() {
 
 # Malformed inspect output is an error (exit 2), not a gap and not jq's own
 # exit code.
+# ps found containers, so an inspect answer without any is an error, not a
+# pass on zero checks.
+an_empty_inspect_answer_is_an_error() {
+	new_posture docker
+	echo '[]' >"$posture_fixture"
+	POSTURE_IDS=x1 run_posture docker
+	expect_status 2
+	expect_out "no containers in the inspect output"
+}
+
 malformed_inspect_output_is_an_error() {
 	new_posture docker
 	edit_container db '.Mounts[0].Source = 5'
@@ -1058,6 +1069,7 @@ tests=(
 	a_writable_root_fails
 	a_shared_network_namespace_fails
 	the_host_pid_and_ipc_namespaces_fail
+	an_empty_inspect_answer_is_an_error
 	malformed_inspect_output_is_an_error
 )
 
