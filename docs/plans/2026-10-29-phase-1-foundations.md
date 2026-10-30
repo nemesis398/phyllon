@@ -1212,7 +1212,7 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       (which shows the `--signer-workflow` check, the SLSA Build Level 3
       evidence) and records 0006 and, if written, 0007.
 - [ ] **Step 6: The shell.** Link the `browser` run and its two screenshots.
-- [ ] **Step 7: The best practices badge** (Mika, 2026-10-30). Stop and ask in
+- [x] **Step 7: The best practices badge** (Mika, 2026-10-30). Stop and ask in
       the question dialog: only Mika can do this. Mika registers the project at
       <https://www.bestpractices.dev> and fills in the passing-level form. Then
       add the badge, `https://www.bestpractices.dev/projects/<id>/badge` with
