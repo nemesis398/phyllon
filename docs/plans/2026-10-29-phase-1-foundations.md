@@ -1136,7 +1136,7 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 **Files:**
 
 - Modify: `Cargo.toml`, `CHANGELOG.md` (through the script), `docs/install.md`
-  ("Verifying a release"), `.github/workflows/nightly.yml`,
+  ("Verifying a release"), `.github/workflows/nightly.yml`, `README.md`,
   `docs/decisions/0007-podman-signature-policy.md` (only if Step 5 fails)
 
 - [ ] **Step 1: Prepare it.** Run `scripts/prepare-release.sh 0.1.0`, push after
@@ -1168,9 +1168,7 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       an update, and no `AutoUpdate=` in the Quadlet unit).
 - [ ] **Step 6: Write "Verifying a release"** in the install guide with the
       commands from Steps 4 and 5.
-- [ ] **Step 7: Ship** the guide. Title:
-      `docs: explain how to verify a release`.
-- [ ] **Step 8: Scan the published image every night** (Mika, 2026-10-30). This
+- [ ] **Step 7: Scan the published image every night** (Mika, 2026-10-30). This
       needs the public package from Step 3, since a scan cannot pull a private
       image. Add a job to `nightly.yml` with `contents: read` and
       `security-events: write`: a pinned `anchore/scan-action` (Grype) on
@@ -1178,9 +1176,17 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       `severity-cutoff: high` and SARIF output, then a pinned
       `github/codeql-action/upload-sarif`. Grype reads the crate list that
       `cargo auditable` embedded. Add `workflow_dispatch` if the file lacks it,
-      and move the tag when the minor line moves. Expected: a manual run is
-      green, the log lists the binary's Rust crates, and the SARIF shows in code
-      scanning. Title: `ci: scan the published image every night`.
+      and move the tag when the minor line moves. Expected: a manual run from
+      the pull request's branch is green, the log lists the binary's Rust
+      crates, and the SARIF shows in code scanning.
+- [ ] **Step 8: Add the release badge to the README** (Mika, 2026-10-30), now
+      that a release exists: the image
+      `https://img.shields.io/github/v/release/nemesis398/phyllon?include_prereleases&sort=semver`,
+      linking to `https://github.com/nemesis398/phyllon/releases`. Expected: the
+      badge shows `v0.1.0`.
+- [ ] **Step 9: Ship** the guide, `nightly.yml` and the README badge in one pull
+      request. Title:
+      `ci: scan the published image and explain how to verify a release`.
 
 ## Part 9: Acceptance
 
@@ -1204,9 +1210,11 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 - [ ] **Step 6: The shell.** Link the `browser` run and its two screenshots.
 - [ ] **Step 7: The best practices badge** (Mika, 2026-10-30). Stop and ask in
       the question dialog: only Mika can do this. Mika registers the project at
-      <https://www.bestpractices.dev> and fills in the passing-level form.
-      Scorecard reads the registration, not the README, so the README keeps its
-      three badges.
+      <https://www.bestpractices.dev> and fills in the passing-level form. Then
+      add the badge, `https://www.bestpractices.dev/projects/<id>/badge` with
+      the ID from the registration, to the README, linking to the project page.
+      Scorecard reads the registration; the badge only shows it. Title:
+      `docs: show the best practices badge in the README`.
 - [ ] **Step 8: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
       latest Scorecard run shows Pinned-Dependencies, Token-Permissions and
       Dangerous-Workflow at 10 and CII-Best-Practices above 0;

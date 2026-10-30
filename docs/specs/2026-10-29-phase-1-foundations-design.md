@@ -347,8 +347,10 @@ the rule or test that now catches it, and the pull request.
 
 - **README**: what Phyllon is in two sentences, the logo, the status (a
   skeleton, nothing to use yet), the principle, the quickstart, and links to the
-  design, the roadmap, CONTRIBUTING and SECURITY. Badges for CI, Scorecard and
-  the license, and no more.
+  design, the roadmap, CONTRIBUTING and SECURITY. Badges for CI, Scorecard, the
+  license, the latest release and OpenSSF Best Practices, and no more. The
+  release badge arrives with the first release, and the Best Practices badge
+  with the registration (Mika, 2026-10-30).
 - **LICENSE**: the AGPL-3.0 text, unchanged.
 - **CONTRIBUTING**: the sign-off, the pull-request flow, how to turn on the
   hooks, the gate, and AI-assisted contributions: welcome under the same rules,
