@@ -49,7 +49,7 @@ usage() {
 (($# == 0)) || [[ -n "$1" ]] || usage "ROOT is empty; omit it to check this repository."
 root="${1:-$(dirname "${BASH_SOURCE[0]}")/../..}"
 [[ -d "$root" ]] || usage "$root is not a directory."
-root="$(cd "$root" && pwd -P)"
+root="$(CDPATH='' cd -- "$root" && pwd -P)"
 skills="$root/.agents/skills"
 links="$root/.claude/skills"
 

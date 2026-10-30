@@ -985,46 +985,48 @@ Done: merged in cc2b7e6 (#25) on 2026-10-30.
   `.claude/skills/` does not resolve to a `SKILL.md` in `.agents/skills/`, or a
   skill there has no link.
 
-- [ ] **Step 1: Write the failing link-check cases:** a resolving link passes; a
+- [x] **Step 1: Write the failing link-check cases:** a resolving link passes; a
       dangling link fails and names it; a skill directory without a link fails
       and names it. Run `scripts/ci/test.sh`; they fail.
-- [ ] **Step 2: Write `check-skill-links.sh`;** the cases pass.
-- [ ] **Step 3: Publish the conscience.** Copy
+- [x] **Step 2: Write `check-skill-links.sh`;** the cases pass.
+- [x] **Step 3: Publish the conscience.** Copy
       `~/.claude/skills/muratori-conscience/` (Mika's own skill) to
       `.agents/skills/conscience/`. Rename it to `conscience` in the frontmatter
       and the title, drop the person's name from the name and the description,
       keep every credit in `reference/lineage-and-sources.md`, add a line naming
       Mika Böhme with an AI as the authors under the repository's license, and
       replace every em dash (236 today) so the house style holds.
-- [ ] **Step 4: Write `commits`** from the shape of Mika's conventional-commits
+- [x] **Step 4: Write `commits`** from the shape of Mika's conventional-commits
       skill, monolingual English: the types, the scopes this repository uses,
       the claims checked against the diff, the sign-off rule, the
       `Co-Authored-By:` trailer, and the pull request title as the commit on
       `main`.
-- [ ] **Step 5: Write `docs-style`:** no em dashes, American spelling,
+- [x] **Step 5: Write `docs-style`:** no em dashes, American spelling,
       sentence-case headings, emoji only as heading labels, Markdown through
       prettier and markdownlint with the repository's configs.
-- [ ] **Step 6: Write `before-you-build`:** the decision tree from the design
+- [x] **Step 6: Write `before-you-build`:** the decision tree from the design
       (its Mermaid diagram), and per candidate the checks with their commands:
       the license through `cargo deny`, maintenance (a release in the last 12
       months), advisories, proof that the crate exists (`cargo info`), the 7-day
       wait, the pinned version's docs on docs.rs, and a decision record.
-- [ ] **Step 7: Write `review`:** a review in a fresh session, ideally another
+- [x] **Step 7: Write `review`:** a review in a fresh session, ideally another
       model family, given the diff and the spec but not the author's reasoning;
       the security checklist from rule 12 of the engineering research; every
       finding becomes a failing test before any fix.
-- [ ] **Step 8: Answer the two open points.** Whether a project-level Claude
+- [x] **Step 8: Answer the two open points.** Whether a project-level Claude
       Code setting can hide a contributor's personal copy of a skill the
       repository ships: check the settings docs and the binary, and write the
       answer in CONTRIBUTING. Whether Codex CLI runs hooks: check its docs, and
       write in AGENTS.md either how Codex runs the gate or that the git hook and
       CI are its only gate.
-- [ ] **Step 9: Check everything.** Run `scripts/ci/check-skill-links.sh`, the
+- [x] **Step 9: Check everything.** Run `scripts/ci/check-skill-links.sh`, the
       Markdown checks and the prose rule (no `—` anywhere: `rg -c '—' .agents`
       prints nothing). Expected: all pass. Add the link check to the `scripts`
       job.
-- [ ] **Step 10: Ship.** Title:
+- [x] **Step 10: Ship.** Title:
       `docs: add the five skills, the conscience included`.
+
+Done: merged in 169dbb3 (#26) and 154cca3 (#27) on 2026-10-30.
 
 ### Task 18: The map and the first decision records
 

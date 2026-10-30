@@ -5,8 +5,6 @@ tool runs it. They are short on purpose. Hooks and CI enforce the ones that
 matter most, because an instruction file alone does not reliably change what an
 agent does.
 
-`docs/map.md` arrives later in phase 1, so it does not exist yet.
-
 ## Rules
 
 1. **Run the full gate before you say done, and show the output.** The gate is

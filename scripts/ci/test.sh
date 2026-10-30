@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
-# check-signoff.sh, for the skill link check check-skill-links.sh, for
-# scripts/github-settings.sh and scripts/posture.sh, and for the image checks
-# and the cloud-init seed of scripts/ci/fedora-vm.sh. The title tests call the
+# check-signoff.sh, for the skill link check check-skill-links.sh, for the
+# module map check check-map.sh, for scripts/github-settings.sh and
+# scripts/posture.sh, and for the image checks and the cloud-init seed of
+# scripts/ci/fedora-vm.sh. The title tests call the
 # script with a title; the sign-off tests build a git repository in a
 # temporary directory, make commits with explicit identities and run the
 # script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the test says.
 # The link tests build a tree of skills and links in a temporary directory and
-# check it. The settings tests put a stub gh first on PATH that answers from
-# fixture JSON, so they never reach GitHub, and the posture tests do the same
+# check it, and the map tests do the same with a src/ and a docs/map.md. The
+# settings tests put a stub gh first on PATH that answers from fixture JSON, so
+# they never reach GitHub, and the posture tests do the same
 # with a stub container engine. The tests of scripts/ci/fedora-vm.sh's trust
 # chain and seed run it with stub gpgv, curl, cloud-localds and QEMU, so they
 # need neither the network nor KVM. Run it with:
@@ -26,6 +28,7 @@ title_check="$ci_dir/check-pr-title.sh"
 signoff_check="$ci_dir/check-signoff.sh"
 settings_script="$ci_dir/../github-settings.sh"
 links_check="$ci_dir/check-skill-links.sh"
+map_check="$ci_dir/check-map.sh"
 
 # Keep the user's git configuration (signing, hooks, templates) out of the
 # temporary repositories.
@@ -641,6 +644,33 @@ without_an_argument_it_checks_its_own_tree() {
 	expect_out ".agents/skills/conscience"
 }
 
+# A ROOT that starts with a dash is a path, not an option of cd.
+a_links_root_starting_with_a_dash_is_a_path() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir "$scratch/dash-links"
+	mv -- "$tree" "$scratch/dash-links/-root"
+	status=0
+	out="$(cd "$scratch/dash-links" && "$links_check" -root 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 skill"
+}
+
+# With CDPATH set, cd to a relative ROOT would print the directory and could
+# pick another one.
+a_links_root_is_not_resolved_through_cdpath() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir -p "$scratch/cd-links/other/sub" "$scratch/cd-links/here"
+	mv -- "$tree" "$scratch/cd-links/here/sub"
+	status=0
+	out="$(cd "$scratch/cd-links/here" && CDPATH="$scratch/cd-links/other" "$links_check" sub 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 skill"
+}
+
 a_root_that_is_not_a_directory_is_a_usage_error() {
 	tree="$scratch/nowhere"
 	run_links
@@ -653,6 +683,458 @@ an_empty_root_is_a_usage_error() {
 	run_links
 	expect_status 2
 	expect_out "ROOT is empty"
+}
+
+# Module map. Each test builds a src/ and a docs/map.md in a temporary
+# directory and runs check-map.sh on it.
+
+# Creates an empty tree for the map tests in $tree, with the src/ of a small
+# crate: lib.rs and main.rs, which are never modules.
+new_map_tree() {
+	tree="$(mktemp -d -p "$scratch")"
+	mkdir -p "$tree/src" "$tree/docs"
+	echo '//! lib' >"$tree/src/lib.rs"
+	echo 'fn main() {}' >"$tree/src/main.rs"
+}
+
+# Adds the module file src/$1.rs to $tree.
+add_module_file() {
+	echo '//! module' >"$tree/src/$1.rs"
+}
+
+# Adds the module file $1/src/$2.rs, for a tree other than $tree.
+add_module_file_in() {
+	mkdir -p "$1/src"
+	echo '//! module' >"$1/src/$2.rs"
+}
+
+# Adds the module directory src/$1/ with a mod.rs to $tree.
+add_module_dir() {
+	mkdir "$tree/src/$1"
+	echo '//! module' >"$tree/src/$1/mod.rs"
+}
+
+# Writes docs/map.md with a title and, for each argument, the heading
+# ## `argument`. (\x60 is the backtick.)
+write_map() {
+	{
+		printf '# Module map\n\nIntro.\n'
+		local name
+		for name in "$@"; do
+			printf '\n## \x60%s\x60\n\nText.\n' "$name"
+		done
+	} >"$tree/docs/map.md"
+}
+
+run_map() {
+	status=0
+	out="$("$map_check" "$tree" 2>&1)" || status=$?
+}
+
+a_matching_map_passes() {
+	new_map_tree
+	add_module_file config
+	add_module_dir http
+	write_map config http
+	run_map
+	expect_status 0
+	expect_out "2 modules"
+}
+
+# Only the direct children of src/ are modules.
+a_submodule_needs_no_heading() {
+	new_map_tree
+	add_module_dir http
+	echo '//! sub' >"$tree/src/http/headers.rs"
+	mkdir "$tree/src/http/deep"
+	echo '//! sub' >"$tree/src/http/deep/mod.rs"
+	write_map http
+	run_map
+	expect_status 0
+	expect_out "1 module,"
+}
+
+a_module_without_a_heading_fails_and_names_it() {
+	new_map_tree
+	add_module_file config
+	add_module_file db
+	add_module_dir http
+	write_map config
+	run_map
+	expect_status 1
+	expect_out "src/db.rs: has no heading ## \`db\` in docs/map.md"
+	expect_out "src/http/: has no heading ## \`http\` in docs/map.md"
+	expect_no_out "src/config.rs"
+	expect_out "2 problem(s)"
+}
+
+a_heading_without_a_module_fails_and_names_it() {
+	new_map_tree
+	add_module_file config
+	write_map config ghost
+	run_map
+	expect_status 1
+	expect_out "docs/map.md:9: heading ## \`ghost\` has no module src/ghost.rs or src/ghost/"
+	expect_no_out "## \`config\`"
+	expect_out "1 problem(s)"
+}
+
+# Every failure is reported, not only the first.
+both_kinds_of_failure_are_reported() {
+	new_map_tree
+	add_module_file config
+	add_module_file db
+	write_map config ghost
+	run_map
+	expect_status 1
+	expect_out "src/db.rs"
+	expect_out "## \`ghost\`"
+	expect_out "2 problem(s)"
+}
+
+# lib.rs and main.rs are the crate's roots, not modules.
+the_crate_roots_are_not_modules() {
+	new_map_tree
+	add_module_file config
+	write_map config lib main
+	run_map
+	expect_status 1
+	expect_out "## \`lib\` has no module"
+	expect_out "## \`main\` has no module"
+	expect_no_out "has no heading"
+	write_map config
+	run_map
+	expect_status 0
+}
+
+# Cargo needs a mod.rs or a sibling file for a directory to be a module, but
+# a directory the map does not name is a decision to take, not to skip.
+a_directory_without_a_mod_rs_still_needs_a_heading() {
+	new_map_tree
+	mkdir "$tree/src/stray"
+	echo '//! x' >"$tree/src/stray/part.rs"
+	write_map
+	run_map
+	expect_status 1
+	expect_out "src/stray/: has no heading"
+}
+
+# The sibling-file layout: src/web.rs with src/web/ for its submodules.
+a_file_and_a_directory_of_one_name_are_one_module() {
+	new_map_tree
+	add_module_file web
+	mkdir "$tree/src/web"
+	echo '//! sub' >"$tree/src/web/strings.rs"
+	write_map web
+	run_map
+	expect_status 0
+	expect_out "1 module,"
+}
+
+# The file names the module, so the failure points at it.
+a_file_and_a_directory_without_a_heading_name_the_file() {
+	new_map_tree
+	add_module_file web
+	mkdir "$tree/src/web"
+	echo '//! sub' >"$tree/src/web/strings.rs"
+	write_map
+	run_map
+	expect_status 1
+	expect_out "src/web.rs: has no heading"
+	expect_out "1 problem(s)"
+}
+
+a_name_with_spaces_is_mapped_like_any_other() {
+	new_map_tree
+	add_module_dir "two words"
+	add_module_file "no heading"
+	write_map "two words"
+	run_map
+	expect_status 1
+	expect_out "src/no heading.rs"
+	expect_no_out "two words"
+}
+
+# Only Rust files and directories are modules, and a dot file is no module.
+other_files_in_src_are_ignored() {
+	new_map_tree
+	echo notes >"$tree/src/NOTES.md"
+	echo '//! x' >"$tree/src/.hidden.rs"
+	mkdir "$tree/src/.cache"
+	write_map
+	run_map
+	expect_status 0
+	expect_out "0 modules"
+}
+
+# A heading counts only in the exact form ## `name`.
+a_heading_without_backticks_does_not_count() {
+	new_map_tree
+	add_module_file cli
+	printf '# Map\n\n## cli\n\nText.\n' >"$tree/docs/map.md"
+	run_map
+	expect_status 1
+	expect_out "src/cli.rs: has no heading ## \`cli\`"
+}
+
+a_heading_of_another_level_does_not_count() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	cat >"$tree/docs/map.md" <<'MAP'
+# Map
+
+### `cli`
+
+#### `db`
+
+# `db`
+MAP
+	run_map
+	expect_status 1
+	expect_out "src/cli.rs: has no heading"
+	expect_out "src/db.rs: has no heading"
+}
+
+a_heading_with_extra_spacing_or_text_does_not_count() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	cat >"$tree/docs/map.md" <<'MAP'
+# Map
+
+##  `cli`
+
+## `db` module
+MAP
+	run_map
+	expect_status 1
+	expect_out "src/cli.rs: has no heading"
+	expect_out "src/db.rs: has no heading"
+}
+
+# The case of a module name is part of it.
+a_heading_in_another_case_names_no_module() {
+	new_map_tree
+	add_module_file cli
+	write_map CLI
+	run_map
+	expect_status 1
+	expect_out "src/cli.rs: has no heading"
+	expect_out "## \`CLI\` has no module"
+}
+
+# Trailing blanks and a CRLF line ending do not change the heading.
+trailing_blanks_and_crlf_are_tolerated() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	printf '# Map\r\n\r\n## \x60cli\x60  \r\n\r\nText.\r\n\r\n## \x60db\x60\t\r\n' \
+		>"$tree/docs/map.md"
+	run_map
+	expect_status 0
+}
+
+a_duplicate_heading_fails_and_names_both_lines() {
+	new_map_tree
+	add_module_file cli
+	write_map cli cli
+	run_map
+	expect_status 1
+	expect_out "docs/map.md:9: duplicate heading ## \`cli\`, first at line 5"
+	expect_out "1 problem(s)"
+}
+
+# The example of a heading in a code block is no entry.
+a_heading_inside_a_code_fence_does_not_count() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	cat >"$tree/docs/map.md" <<'MAP'
+# Map
+
+## `cli`
+
+Headings look like this:
+
+```markdown
+## `db`
+## `ghost`
+```
+
+~~~
+## `other`
+~~~
+MAP
+	run_map
+	expect_status 1
+	expect_out "src/db.rs: has no heading"
+	expect_no_out "ghost"
+	expect_no_out "other"
+}
+
+# A fence is closed by its own character only, so a tilde run inside a
+# backtick fence is text.
+a_fence_is_not_closed_by_the_other_character() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	cat >"$tree/docs/map.md" <<'MAP'
+# Map
+
+## `cli`
+
+```
+~~~
+## `db`
+```
+MAP
+	run_map
+	expect_status 1
+	expect_out "src/db.rs: has no heading"
+}
+
+# A longer fence is not closed by a shorter run, and a heading after the
+# closing fence counts again.
+a_heading_after_a_closed_code_fence_counts() {
+	new_map_tree
+	add_module_file cli
+	add_module_file db
+	cat >"$tree/docs/map.md" <<'MAP'
+# Map
+
+````markdown
+```
+## `cli`
+```
+````
+
+## `cli`
+
+## `db`
+MAP
+	run_map
+	expect_status 0
+	expect_out "2 modules"
+}
+
+a_missing_map_fails_and_names_it() {
+	new_map_tree
+	add_module_file cli
+	run_map
+	expect_status 1
+	expect_out "docs/map.md: missing"
+}
+
+a_missing_src_fails_and_names_it() {
+	new_map_tree
+	rm -r -- "$tree/src"
+	write_map
+	run_map
+	expect_status 1
+	expect_out "src: missing or not a directory"
+}
+
+# An empty src/ means a wrong root or a deleted tree, not a pass.
+an_empty_src_fails() {
+	new_map_tree
+	rm -- "$tree/src/lib.rs" "$tree/src/main.rs"
+	write_map
+	run_map
+	expect_status 1
+	expect_out "src: has no Rust files"
+}
+
+# Without an argument the script checks the repository it lives in, from any
+# working directory.
+the_map_check_without_an_argument_checks_its_own_tree() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	mkdir -p "$tree/scripts/ci"
+	cp -- "$map_check" "$tree/scripts/ci/"
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-map.sh" 2>&1)" || status=$?
+	expect_status 0
+	write_map
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-map.sh" 2>&1)" || status=$?
+	expect_status 1
+	expect_out "src/cli.rs"
+}
+
+a_map_root_that_is_not_a_directory_is_a_usage_error() {
+	tree="$scratch/nowhere"
+	run_map
+	expect_status 2
+	expect_out "is not a directory"
+}
+
+# An empty argument is a mistake, not a request for the default root.
+an_empty_map_root_is_a_usage_error() {
+	tree=""
+	run_map
+	expect_status 2
+	expect_out "ROOT is empty"
+}
+
+# A ROOT that starts with a dash is a path, not an option of cd.
+a_map_root_starting_with_a_dash_is_a_path() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	mkdir "$scratch/dash"
+	mv -- "$tree" "$scratch/dash/-root"
+	status=0
+	out="$(cd "$scratch/dash" && "$map_check" -root 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 module,"
+}
+
+# With CDPATH set, cd to a relative ROOT would print the directory and could
+# pick another one.
+a_map_root_is_not_resolved_through_cdpath() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	mkdir -p "$scratch/cd/other/sub" "$scratch/cd/here"
+	mv -- "$tree" "$scratch/cd/here/sub"
+	add_module_file_in "$scratch/cd/other/sub" db
+	status=0
+	out="$(cd "$scratch/cd/here" && CDPATH="$scratch/cd/other" "$map_check" sub 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 module,"
+}
+
+# A symlink in src/ that leads nowhere is a module the check cannot read.
+a_dangling_symlink_in_src_fails_and_names_it() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	ln -s -- missing.rs "$tree/src/gone.rs"
+	run_map
+	expect_status 1
+	expect_out "src/gone.rs: is a symlink that leads nowhere"
+	expect_no_out "src/cli.rs"
+}
+
+# A link to a module file or directory counts like the thing it points to.
+a_working_symlink_in_src_is_a_module() {
+	new_map_tree
+	add_module_file cli
+	ln -s -- cli.rs "$tree/src/alias.rs"
+	write_map cli
+	run_map
+	expect_status 1
+	expect_out "src/alias.rs: has no heading"
+}
+
+two_map_roots_are_a_usage_error() {
+	new_map_tree
+	status=0
+	out="$("$map_check" "$tree" "$tree" 2>&1)" || status=$?
+	expect_status 2
+	expect_out "usage: check-map.sh [ROOT]"
 }
 
 # Repository settings. The stub gh answers `gh api [-X METHOD] [-H HEADER]...
@@ -1710,6 +2192,39 @@ tests=(
 	without_an_argument_it_checks_its_own_tree
 	a_root_that_is_not_a_directory_is_a_usage_error
 	an_empty_root_is_a_usage_error
+	a_links_root_starting_with_a_dash_is_a_path
+	a_links_root_is_not_resolved_through_cdpath
+	a_matching_map_passes
+	a_submodule_needs_no_heading
+	a_module_without_a_heading_fails_and_names_it
+	a_heading_without_a_module_fails_and_names_it
+	both_kinds_of_failure_are_reported
+	the_crate_roots_are_not_modules
+	a_directory_without_a_mod_rs_still_needs_a_heading
+	a_file_and_a_directory_of_one_name_are_one_module
+	a_file_and_a_directory_without_a_heading_name_the_file
+	a_name_with_spaces_is_mapped_like_any_other
+	other_files_in_src_are_ignored
+	a_heading_without_backticks_does_not_count
+	a_heading_of_another_level_does_not_count
+	a_heading_with_extra_spacing_or_text_does_not_count
+	a_heading_in_another_case_names_no_module
+	trailing_blanks_and_crlf_are_tolerated
+	a_duplicate_heading_fails_and_names_both_lines
+	a_heading_inside_a_code_fence_does_not_count
+	a_fence_is_not_closed_by_the_other_character
+	a_heading_after_a_closed_code_fence_counts
+	a_missing_map_fails_and_names_it
+	a_missing_src_fails_and_names_it
+	an_empty_src_fails
+	the_map_check_without_an_argument_checks_its_own_tree
+	a_map_root_that_is_not_a_directory_is_a_usage_error
+	an_empty_map_root_is_a_usage_error
+	two_map_roots_are_a_usage_error
+	a_map_root_starting_with_a_dash_is_a_path
+	a_map_root_is_not_resolved_through_cdpath
+	a_dangling_symlink_in_src_fails_and_names_it
+	a_working_symlink_in_src_is_a_module
 	the_audit_passes_when_every_setting_matches_and_only_reads
 	repository_flags_that_differ_fail
 	security_settings_that_differ_fail
