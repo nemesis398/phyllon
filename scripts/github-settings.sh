@@ -101,7 +101,7 @@ expected="$(jq -n '{
 				# The jobs of ci.yml, and pr-title from pr-title.yml.
 				required_status_checks: ["gate", "integration (17)",
 					"integration (18)", "pr-title", "sign-off", "dependency-review",
-					"markdown", "scripts", "stack-docker"]
+					"markdown", "scripts", "stack-docker", "browser"]
 					| map({context: ., integration_id: 15368})
 			}}
 		]
