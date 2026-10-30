@@ -194,6 +194,32 @@ fn accepts_http_and_https_public_urls_and_nothing_else() {
 }
 
 #[test]
+fn accepts_an_http_source_url_and_rejects_anything_else() {
+    let extra = |url: &str| format!("source_url = \"{url}\"");
+    let config = load(
+        "source-ok",
+        &config_with(&extra("https://git.example/phyllon"), "https://p.example"),
+    )
+    .unwrap();
+    assert_eq!(
+        config.source_url.as_deref(),
+        Some("https://git.example/phyllon")
+    );
+
+    for rejected in ["", "javascript:alert(1)"] {
+        let error = load(
+            "source-bad",
+            &config_with(&extra(rejected), "https://p.example"),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&error, ConfigError::SourceUrl(value) if value == rejected),
+            "{rejected:?} gave {error:?}"
+        );
+    }
+}
+
+#[test]
 fn reads_the_password_without_its_line_ending() {
     assert_eq!(password_from("pw-lf", b"s3cret\n"), "s3cret");
     assert_eq!(password_from("pw-crlf", b"s3cret\r\n"), "s3cret");
