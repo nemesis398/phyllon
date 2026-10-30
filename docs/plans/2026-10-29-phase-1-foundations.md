@@ -111,7 +111,8 @@ and ends the same way:
    on): `npx prettier --check .` and `npx markdownlint-cli2`. Both pass.
 2. Commit with the sign-off and the trailer from the Global Constraints.
 3. The main session asks Mika for the key, pushes, and opens the pull request
-   with `gh pr create`. The body ends with what ran, what did not, and what the
+   with `gh pr create --milestone "M1 Foundations"`, so that GitHub files it
+   under the phase. The body ends with what ran, what did not, and what the
    author is unsure of.
 4. CI is green (from Task 6 on). The main session asks Mika in the question
    dialog and, on Mika's yes, merges with `gh pr merge --squash`.
@@ -1232,5 +1233,6 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       workflow lockfiles have their month of use on 2026-11-28: if phase 1
       closes earlier, add a Plane item to look at them then.
 - [ ] **Step 9: Close M1.** Mark PHY-9 to PHY-18 done with their evidence, close
-      M1, update the project paper's milestone line through `/project update`,
-      and set M2's date.
+      M1 on Plane and the milestone `M1 Foundations` on GitHub, update the
+      project paper's milestone line through `/project update`, and set M2's
+      date.
