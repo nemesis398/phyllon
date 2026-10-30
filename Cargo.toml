@@ -1,0 +1,29 @@
+[package]
+name = "phyllon"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99.1"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/nemesis398/phyllon"
+publish = false
+
+# The lint baseline from section 3.5 of docs/research/engineering-quality.md.
+# scripts/check.sh runs clippy with warnings denied, so "warn" fails the gate
+# as surely as "deny". A plain `cargo build` runs only the rustc lints, so it
+# enforces `unsafe_code` but none of the Clippy lints.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+indexing_slicing = "warn"
+string_slice = "warn"
+print_stdout = "warn"
+let_underscore_must_use = "warn"
+allow_attributes_without_reason = "deny"

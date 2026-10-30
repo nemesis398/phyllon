@@ -220,7 +220,7 @@ Done: merged in f607047 (#2) on 2026-10-29. Mika confirmed both aliases on
 - Produces: `.claude/settings.json`, which Task 5 extends with hooks; the
   decision-record format that Tasks 13, 18, 19 and 21 use.
 
-- [ ] **Step 1: Write AGENTS.md.** The fifteen rules from section 8 of
+- [x] **Step 1: Write AGENTS.md.** The fifteen rules from section 8 of
       `docs/research/engineering-quality.md`, each as one or two sentences with
       its reason in one clause, adapted: rule 1 names `scripts/check.sh`; rule 3
       lists the gate's files (`Cargo.toml` `[lints]`, `clippy.toml`,
@@ -230,19 +230,21 @@ Done: merged in f607047 (#2) on 2026-10-29. Mika confirmed both aliases on
       merges and conventional titles; a new rule 16 holds the sign-off rule.
       Then where things live: `docs/specs/`, `docs/plans/`, `docs/decisions/`,
       `docs/map.md`, `docs/lessons.md`, `.agents/skills/`.
-- [ ] **Step 2: Write CLAUDE.md** with the single line `@AGENTS.md`.
-- [ ] **Step 3: Write `.claude/settings.json`** naming the superpowers plugin
+- [x] **Step 2: Write CLAUDE.md** with the single line `@AGENTS.md`.
+- [x] **Step 3: Write `.claude/settings.json`** naming the superpowers plugin
       through `extraKnownMarketplaces` and `enabledPlugins`. Check the key names
       against the Claude Code settings docs before writing them.
-- [ ] **Step 4: Write the first decision record.** `0001-decision-records.md`:
+- [x] **Step 4: Write the first decision record.** `0001-decision-records.md`:
       one file per decision, `NNNN-slug.md`, with Context, Options, the
       comparison on the conscience's five dials (granularity, redundancy,
       coupling, retention, flow control) as a table, Decision, and Consequences;
       status `accepted` or `superseded by NNNN`.
-- [ ] **Step 5: Write `docs/lessons.md`** with its format only: per entry the
+- [x] **Step 5: Write `docs/lessons.md`** with its format only: per entry the
       bug, the rule or test that now catches it, and the pull request.
-- [ ] **Step 6: Ship.** Title:
+- [x] **Step 6: Ship.** Title:
       `docs: add the agent rules, decision records and lessons`.
+
+Done: merged in d1d7a1c (#3) on 2026-10-30.
 
 ## Part 2: The gate (PHY-15)
 
