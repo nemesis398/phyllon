@@ -1,0 +1,8 @@
+# The pinned toolchain. A new Clippy release adds lints, and with warnings
+# denied that would turn the gate red on an unrelated change, so the version
+# moves only in its own pull request. The Docker builder image uses the same
+# version.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

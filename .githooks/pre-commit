@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Runs the gate, scripts/check.sh, when a commit touches Rust code or the
+# gate's configuration, so a docs-only commit does not wait for it. Turn it on
+# once per clone with:
+#
+#   git config core.hooksPath .githooks
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+set -euo pipefail
+
+# Git runs hooks from the top of the work tree; make sure of it anyway, since
+# the pathspecs below are relative to the working directory.
+top="$(git rev-parse --show-toplevel)"
+cd "$top"
+
+# Let git match the staged paths, so names with spaces or other odd characters
+# need no parsing here. In glob magic, "**/" also matches the top level.
+gate_paths=(
+	':(glob)**/*.rs'
+	':(glob)**/Cargo.toml'
+	':(glob)**/Cargo.lock'
+	':(glob)**/clippy.toml'
+	':(glob)**/deny.toml'
+	':(glob)**/rust-toolchain.toml'
+)
+
+# Added, copied, deleted, modified and type-changed paths. --no-renames splits a
+# rename into a deletion and an addition, so moving a Rust file to a name the
+# patterns miss still counts. -z keeps non-ASCII names unquoted in the message.
+staged="$(
+	git diff --cached --name-only -z --no-renames --diff-filter=ACDMT \
+		-- "${gate_paths[@]}" | tr '\0' '\n'
+)"
+
+if [[ -z "$staged" ]]; then
+	echo "pre-commit: no Rust or gate configuration files staged, skipping scripts/check.sh"
+	exit 0
+fi
+
+echo "pre-commit: staged files that need the gate:"
+printf '%s\n' "$staged"
+exec scripts/check.sh

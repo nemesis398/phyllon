@@ -1,0 +1,6 @@
+# Tests may unwrap, expect, panic and index, so they stay readable. Everywhere
+# else the lint baseline in Cargo.toml forbids it.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
