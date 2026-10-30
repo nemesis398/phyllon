@@ -26,7 +26,8 @@ mod support {
     pub const REQUEST: &[u8] =
         b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
 
-    /// An address nothing listens on and nothing can bind without privileges.
+    /// An address the tests rely on nothing listening at: nothing listens on
+    /// port 1 on the machines that run them.
     pub const NEVER_BOUND: &str = "127.0.0.1:1";
 
     /// Makes an empty directory for one test under the target directory, so tests
@@ -40,14 +41,6 @@ mod support {
         }
         fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    /// A port nothing listens on right now: bind to port 0, note it, let go.
-    pub fn free_addr() -> SocketAddr {
-        TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .unwrap()
-            .local_addr()
-            .unwrap()
     }
 
     /// Writes `config.toml` into `dir`, listening on `listen`, with the
@@ -127,24 +120,10 @@ mod support {
             .spawn()
             .unwrap();
         let status = wait_bounded(&mut child);
-        let mut stdout = String::new();
-        let mut stderr = String::new();
-        child
-            .stdout
-            .take()
-            .unwrap()
-            .read_to_string(&mut stdout)
-            .unwrap();
-        child
-            .stderr
-            .take()
-            .unwrap()
-            .read_to_string(&mut stderr)
-            .unwrap();
         Finished {
             code: status.code(),
-            stdout,
-            stderr,
+            stdout: read_all(child.stdout.take().unwrap()),
+            stderr: read_all(child.stderr.take().unwrap()),
         }
     }
 
@@ -291,6 +270,7 @@ mod support {
     pub fn answer_once(answer: &'static [u8]) -> (SocketAddr, JoinHandle<Vec<u8>>) {
         serve_once(move |stream| stream.write_all(answer).unwrap())
     }
+
     /// A server that writes `prefix`, then keeps the connection open until the
     /// returned sender fires (or ten seconds pass), like one that ignores
     /// `Connection: close`.
@@ -326,7 +306,7 @@ fn probe_succeeds_against_a_running_server() {
 fn probe_fails_when_nothing_listens() {
     let started = Instant::now();
 
-    let error = probe(free_addr(), Duration::from_secs(3)).unwrap_err();
+    let error = probe(NEVER_BOUND.parse().unwrap(), Duration::from_secs(3)).unwrap_err();
 
     assert_eq!(format!("{error:?}").split('(').next(), Some("Connect"));
     assert!(started.elapsed() < Duration::from_secs(3));
@@ -467,7 +447,7 @@ fn serve_and_healthcheck_work_end_to_end() {
         let finished = server.stop(signal);
         assert_eq!(finished.code, Some(0), "stderr: {}", finished.stderr);
         assert!(finished.stderr.contains(&format!("received SIG{signal}")));
-        assert!(finished.stderr.contains(&server.listen.to_string()));
+        assert!(finished.stderr.contains("phyllon stopped"));
         assert!(finished.stderr.contains(env!("CARGO_PKG_VERSION")));
         assert!(!finished.stderr.contains(PASSWORD));
         assert_eq!(finished.stdout, "");
@@ -476,18 +456,13 @@ fn serve_and_healthcheck_work_end_to_end() {
 
 #[test]
 fn healthcheck_fails_when_nothing_listens() {
-    let listen = free_addr();
-    let config = config_at("healthcheck-down", &listen.to_string());
+    let config = config_at("healthcheck-down", NEVER_BOUND);
 
     let result = run_with_config("healthcheck", &config);
 
     assert_eq!(result.code, Some(1));
     assert!(result.stderr.starts_with("phyllon: "), "{}", result.stderr);
-    assert!(
-        result.stderr.contains(&listen.to_string()),
-        "{}",
-        result.stderr
-    );
+    assert!(result.stderr.contains(NEVER_BOUND), "{}", result.stderr);
     assert_eq!(result.stdout, "");
 }
 

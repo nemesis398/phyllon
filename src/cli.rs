@@ -245,7 +245,8 @@ pub fn probe(addr: SocketAddr, timeout: Duration) -> Result<(), ProbeError> {
         let read = match stream.read(chunk.get_mut(..room).unwrap_or_default()) {
             Ok(0) => break,
             Ok(read) => read,
-            // signal(7): recv with SO_RCVTIMEO returns EINTR even under SA_RESTART, and `probe` is public.
+            // signal(7): recv with SO_RCVTIMEO returns EINTR even under
+            // SA_RESTART, and `probe` is public.
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(io_error(error)),
         };
