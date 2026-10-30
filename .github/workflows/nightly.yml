@@ -1,0 +1,35 @@
+# Checks the dependency tree against the RustSec advisory database every night,
+# so a new advisory surfaces without a code change. A failed run notifies the
+# maintainer by mail.
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    name: advisories
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # cargo deny reads the dependency tree through cargo metadata.
+      - run: rustup toolchain install --no-self-update
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-deny@0.20.2
+      - run: cargo deny check advisories

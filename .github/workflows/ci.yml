@@ -1,0 +1,167 @@
+# CI for every pull request and every push to main. Every job is a required
+# check: the branch ruleset names each job, so a renamed or added job changes
+# scripts/github-settings.sh too.
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: CI
+
+on:
+  pull_request:
+    # edited: the title becomes the squash commit, so a new title is checked.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup reads rust-toolchain.toml.
+      - run: rustup toolchain install --no-self-update
+      # Only main saves the cache. A pull request restores main's, and GitHub
+      # keeps what a pull request saves to that pull request, so saving there
+      # only crowds main's out. The release workflow must restore no cache.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The same versions as on the maintainer's machine.
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-nextest@0.9.149,cargo-shear@1.14.0,cargo-deny@0.20.2
+      - run: scripts/check.sh
+      - run: cargo deny check advisories
+      - run: cargo doc --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  integration:
+    name: integration (${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: 17
+            image: pgvector/pgvector@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d # 0.8.7-pg17
+          - postgres: 18
+            image: pgvector/pgvector@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11 # 0.8.7-pg18
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phyllon
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phyllon" --health-interval 2s
+          --health-timeout 5s --health-retries 30
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: phyllon
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-nextest@0.9.149
+      # The tests that need PostgreSQL are the ignored ones. None exists until
+      # Task 9, which removes --no-tests=pass.
+      - run: cargo nextest run --locked --run-ignored only --no-tests=pass
+
+  pr-title:
+    name: pr-title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/ci/check-pr-title.sh "$TITLE"
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+
+  sign-off:
+    name: sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: scripts/ci/check-signoff.sh "$BASE_SHA" "$HEAD_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  markdown:
+    name: markdown
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # prettier and markdownlint-cli2 need no install scripts.
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --check .
+      - run: npx markdownlint-cli2
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The runner's shellcheck follows its image (0.9.0 on Ubuntu 24.04 flags
+      # what 0.11.0 does not), so CI installs the maintainer's version and
+      # checks that it is the one on PATH.
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: shellcheck@0.11.0
+      - name: shellcheck
+        run: |
+          shellcheck --version | grep -Fx 'version: 0.11.0'
+          git ls-files -z -- ':(glob)scripts/**/*.sh' ':(glob).githooks/*' |
+            xargs -0 shellcheck
+      - run: scripts/ci/test.sh
+      - run: scripts/hooks/test.sh
