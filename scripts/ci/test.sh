@@ -644,6 +644,33 @@ without_an_argument_it_checks_its_own_tree() {
 	expect_out ".agents/skills/conscience"
 }
 
+# A ROOT that starts with a dash is a path, not an option of cd.
+a_links_root_starting_with_a_dash_is_a_path() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir "$scratch/dash-links"
+	mv -- "$tree" "$scratch/dash-links/-root"
+	status=0
+	out="$(cd "$scratch/dash-links" && "$links_check" -root 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 skill"
+}
+
+# With CDPATH set, cd to a relative ROOT would print the directory and could
+# pick another one.
+a_links_root_is_not_resolved_through_cdpath() {
+	new_tree
+	add_skill conscience
+	link_skill conscience
+	mkdir -p "$scratch/cd-links/other/sub" "$scratch/cd-links/here"
+	mv -- "$tree" "$scratch/cd-links/here/sub"
+	status=0
+	out="$(cd "$scratch/cd-links/here" && CDPATH="$scratch/cd-links/other" "$links_check" sub 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 skill"
+}
+
 a_root_that_is_not_a_directory_is_a_usage_error() {
 	tree="$scratch/nowhere"
 	run_links
@@ -673,6 +700,12 @@ new_map_tree() {
 # Adds the module file src/$1.rs to $tree.
 add_module_file() {
 	echo '//! module' >"$tree/src/$1.rs"
+}
+
+# Adds the module file $1/src/$2.rs, for a tree other than $tree.
+add_module_file_in() {
+	mkdir -p "$1/src"
+	echo '//! module' >"$1/src/$2.rs"
 }
 
 # Adds the module directory src/$1/ with a mod.rs to $tree.
@@ -1043,6 +1076,57 @@ an_empty_map_root_is_a_usage_error() {
 	run_map
 	expect_status 2
 	expect_out "ROOT is empty"
+}
+
+# A ROOT that starts with a dash is a path, not an option of cd.
+a_map_root_starting_with_a_dash_is_a_path() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	mkdir "$scratch/dash"
+	mv -- "$tree" "$scratch/dash/-root"
+	status=0
+	out="$(cd "$scratch/dash" && "$map_check" -root 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 module,"
+}
+
+# With CDPATH set, cd to a relative ROOT would print the directory and could
+# pick another one.
+a_map_root_is_not_resolved_through_cdpath() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	mkdir -p "$scratch/cd/other/sub" "$scratch/cd/here"
+	mv -- "$tree" "$scratch/cd/here/sub"
+	add_module_file_in "$scratch/cd/other/sub" db
+	status=0
+	out="$(cd "$scratch/cd/here" && CDPATH="$scratch/cd/other" "$map_check" sub 2>&1)" || status=$?
+	expect_status 0
+	expect_out "1 module,"
+}
+
+# A symlink in src/ that leads nowhere is a module the check cannot read.
+a_dangling_symlink_in_src_fails_and_names_it() {
+	new_map_tree
+	add_module_file cli
+	write_map cli
+	ln -s -- missing.rs "$tree/src/gone.rs"
+	run_map
+	expect_status 1
+	expect_out "src/gone.rs: is a symlink that leads nowhere"
+	expect_no_out "src/cli.rs"
+}
+
+# A link to a module file or directory counts like the thing it points to.
+a_working_symlink_in_src_is_a_module() {
+	new_map_tree
+	add_module_file cli
+	ln -s -- cli.rs "$tree/src/alias.rs"
+	write_map cli
+	run_map
+	expect_status 1
+	expect_out "src/alias.rs: has no heading"
 }
 
 two_map_roots_are_a_usage_error() {
@@ -2108,6 +2192,8 @@ tests=(
 	without_an_argument_it_checks_its_own_tree
 	a_root_that_is_not_a_directory_is_a_usage_error
 	an_empty_root_is_a_usage_error
+	a_links_root_starting_with_a_dash_is_a_path
+	a_links_root_is_not_resolved_through_cdpath
 	a_matching_map_passes
 	a_submodule_needs_no_heading
 	a_module_without_a_heading_fails_and_names_it
@@ -2135,6 +2221,10 @@ tests=(
 	a_map_root_that_is_not_a_directory_is_a_usage_error
 	an_empty_map_root_is_a_usage_error
 	two_map_roots_are_a_usage_error
+	a_map_root_starting_with_a_dash_is_a_path
+	a_map_root_is_not_resolved_through_cdpath
+	a_dangling_symlink_in_src_fails_and_names_it
+	a_working_symlink_in_src_is_a_module
 	the_audit_passes_when_every_setting_matches_and_only_reads
 	repository_flags_that_differ_fail
 	security_settings_that_differ_fail

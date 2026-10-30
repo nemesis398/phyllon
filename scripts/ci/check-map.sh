@@ -24,8 +24,12 @@
 # - a module without an entry;
 # - an entry without a module;
 # - an entry that appears twice;
+# - a symlink in src/ that leads nowhere, which the check cannot read;
 # - a missing or empty src/, which means a wrong ROOT or a deleted tree, and
 #   a missing docs/map.md.
+#
+# Known limitation: the check does not parse HTML comments, so a heading inside
+# <!-- ... --> counts as an entry. Keep the map free of commented-out headings.
 #
 # It prints each failure with the path it concerns and exits 0 when the map
 # and the modules match, 1 when something fails, and 2 on a usage error.
@@ -45,7 +49,7 @@ usage() {
 (($# == 0)) || [[ -n "$1" ]] || usage "ROOT is empty; omit it to check this repository."
 root="${1:-$(dirname "${BASH_SOURCE[0]}")/../..}"
 [[ -d "$root" ]] || usage "$root is not a directory."
-root="$(cd "$root" && pwd -P)"
+root="$(CDPATH='' cd -- "$root" && pwd -P)"
 src="$root/src"
 map="$root/docs/map.md"
 
@@ -56,6 +60,8 @@ fence_open_re="^ {0,3}(${tick}{3,}|~{3,})"
 fence_close_re="^ {0,3}(${tick}+|~+)[[:space:]]*\$"
 
 failures=()
+# Set when the comparison cannot run at all.
+fatal=""
 mod_names=()
 mod_paths=()
 rust_entries=0
@@ -63,6 +69,10 @@ rust_entries=0
 if [[ -d "$src" ]]; then
 	for entry in "$src"/*; do
 		base="${entry##*/}"
+		if [[ -L "$entry" && ! -e "$entry" ]]; then
+			failures+=("src/$base: is a symlink that leads nowhere")
+			continue
+		fi
 		if [[ -d "$entry" ]]; then
 			rust_entries=$((rust_entries + 1))
 			name="$base"
@@ -85,13 +95,20 @@ if [[ -d "$src" ]]; then
 		mod_names+=("$name")
 		mod_paths+=("$path")
 	done
-	((rust_entries > 0)) || failures+=("src: has no Rust files or modules")
+	((rust_entries > 0)) || {
+		failures+=("src: has no Rust files or modules")
+		fatal=1
+	}
 else
 	failures+=("src: missing or not a directory")
+	fatal=1
 fi
-[[ -f "$map" ]] || failures+=("docs/map.md: missing or not a file")
+[[ -f "$map" ]] || {
+	failures+=("docs/map.md: missing or not a file")
+	fatal=1
+}
 
-if ((${#failures[@]} > 0)); then
+if [[ -n "$fatal" ]]; then
 	printf '%s\n' "${failures[@]}"
 	echo "check-map.sh: ${#failures[@]} problem(s) with docs/map.md"
 	exit 1
