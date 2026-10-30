@@ -790,7 +790,7 @@ Done: merged in ccea2b3 (#20) on 2026-10-30; stack-docker required from then on.
 - Produces: `scripts/ci/fedora-vm.sh`, which boots a Fedora Cloud VM under KVM
   and runs a command inside it as an unprivileged user.
 
-- [ ] **Step 1: Spike the VM.** Write `fedora-vm.sh`: open `/dev/kvm` with the
+- [x] **Step 1: Spike the VM.** Write `fedora-vm.sh`: open `/dev/kvm` with the
       udev rule from the design, download the current Fedora Cloud Base qcow2
       and its `CHECKSUM` file, verify the checksum file's signature against
       Fedora's published key and the image against the checksum, boot it with a
@@ -798,18 +798,18 @@ Done: merged in ccea2b3 (#20) on 2026-10-30; stack-docker required from then on.
       first `podman.yml` runs only `getenforce` and `podman info` in the VM.
       Push it on the branch (main session, key dialog) and run it three times.
       Expected: `Enforcing`; note the duration of each run.
-- [ ] **Step 2: Decide the path.** At 15 minutes or less per run and three green
+- [x] **Step 2: Decide the path.** At 15 minutes or less per run and three green
       runs, pull requests keep the VM job. Otherwise the fallback from the
       design: a nightly run on the maintainer's hardware that pulls `main`.
       Write `0005-podman-ci.md` with the numbers.
-- [ ] **Step 3: Run the stack under rootless Podman in the VM.** Run
+- [x] **Step 3: Run the stack under rootless Podman in the VM.** Run
       `scripts/stack-test.sh podman` there. Expected trouble: SELinux denies the
       bind-mounted secrets, config and init script. Fix with the `z` option on
       those mounts in `compose.yaml` if Docker still passes
       `scripts/stack-test.sh docker` with it; otherwise put the option in
       `compose.podman.yaml`. Expected afterwards: every check passes with
       SELinux enforcing.
-- [ ] **Step 4: Write the Quadlet units:** the networks (`Internal=true` on
+- [x] **Step 4: Write the Quadlet units:** the networks (`Internal=true` on
       `phyllon-db`), the volumes, `Secret=` for the passwords, `Notify=healthy`,
       the config as a single-file bind mount with `:Z` from
       `~/.config/phyllon/phyllon.toml`, `Image=ghcr.io/nemesis398/phyllon:0.1`
@@ -818,17 +818,19 @@ Done: merged in ccea2b3 (#20) on 2026-10-30; stack-docker required from then on.
       `PidsLimit=`). The proxy unit adds `AddCapability=CAP_NET_BIND_SERVICE`,
       for the same reason as compose: the caddy binary carries that file
       capability and does not start without it (Mika, 2026-10-30).
-- [ ] **Step 5: Write `scripts/quadlet-test.sh`,** which installs the units for
+- [x] **Step 5: Write `scripts/quadlet-test.sh`,** which installs the units for
       the VM user, creates the Podman secrets, runs
       `systemctl --user daemon-reload` and starts them, waits for
       `phyllon.service` to report healthy, repeats the checks of
       `stack-test.sh`, and removes everything.
-- [ ] **Step 6: Finish `podman.yml`:** on pull requests touching
+- [x] **Step 6: Finish `podman.yml`:** on pull requests touching
       `compose*.yaml`, `deploy/**` or `Dockerfile`, and nightly; it builds the
       image, copies it into the VM, and runs `stack-test.sh podman` and
       `quadlet-test.sh`. Expected: green.
-- [ ] **Step 7: Ship.** Title:
+- [x] **Step 7: Ship.** Title:
       `feat(deploy): add Quadlet units and prove the stack under SELinux`.
+
+Done: merged in 1f7f905 (#21) and c6b94fd (#22) on 2026-10-30.
 
 ### Task 14: The install guide
 
