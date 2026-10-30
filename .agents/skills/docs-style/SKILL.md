@@ -62,16 +62,21 @@ or code comments. Most headings need none.
 
 - Link repository files with relative links, and wrap a bare URL in angle
   brackets: `<https://docs.rs/>`.
-- A Mermaid diagram copies its `%%{init: ...}%%` line from an existing one, such
-  as the release diagram in [CONTRIBUTING.md](../../../CONTRIBUTING.md), so
-  every diagram carries the brand.
+- A Mermaid diagram copies its `%%{init: ...}%%` line from the decision tree in
+  the `before-you-build` skill or the release flow in the "Releases" section of
+  [the phase 1 design](../../../docs/specs/2026-10-29-phase-1-foundations-design.md).
+  That line sets six colors of the light theme in
+  [`brand/mermaid-theme.json`](../../../brand/mermaid-theme.json) and its font,
+  without the theme's `system-ui` fallback.
 
-Format with prettier first, then lint with markdownlint-cli2:
+Format with prettier first, then lint with markdownlint-cli2. The `globs` list
+in the config adds every Markdown file to each run, so `--no-globs` keeps a run
+to the files you name:
 
 ```sh
 npm ci --ignore-scripts
 npx prettier --write <files>
-npx markdownlint-cli2 --fix <files>
+npx markdownlint-cli2 --no-globs --fix <files>
 npx prettier --check .
 npx markdownlint-cli2
 ```
