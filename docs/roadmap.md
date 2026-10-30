@@ -77,6 +77,9 @@ Tasks with parameters, and the proof that weak models hold.
   thinking pass it.
 - `check_reply` finds leaked answers and solution steps, and the battery and the
   reply check share one rule set.
+- The math parser and the answer checker are fuzzed with cargo-fuzz, run by
+  ClusterFuzzLite on pull requests and every night, which also raises
+  Scorecard's Fuzzing check (Mika, 2026-10-30).
 
 ## 🪴 Phase 4: Reading documents
 

@@ -220,14 +220,14 @@ heading under different parents. Every editor that runs prettier and
 markdownlint on save then writes what CI expects, and CI runs both in check mode
 on every pull request.
 
-| Workflow        | Runs on                                                                                  | Jobs                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ci.yml`        | Every pull request and every push to `main`                                              | The gate; integration tests against PostgreSQL 17 and 18 as service containers; `cargo doc` with warnings denied; `cargo deny check advisories`; the pull request title; the sign-offs; the map and skill-link checks; the browser checks; prettier and markdownlint on the Markdown files; the stack under Docker with the posture script |
-| `podman.yml`    | Pull requests that touch `compose*.yaml`, `deploy/` or the `Dockerfile`, and every night | A Fedora VM with SELinux enforcing: the stack under rootless `podman compose`, then under Quadlet, each followed by the posture script                                                                                                                                                                                                     |
-| `workflows.yml` | Pull requests that touch `.github/`                                                      | zizmor and actionlint                                                                                                                                                                                                                                                                                                                      |
-| `release.yml`   | Every push to `main`                                                                     | release-plz, and when a new version has reached `main`, the build, attest, sign, verify and publish jobs                                                                                                                                                                                                                                   |
-| `scorecard.yml` | Weekly                                                                                   | OpenSSF Scorecard, shown as a badge                                                                                                                                                                                                                                                                                                        |
-| `nightly.yml`   | Every night                                                                              | `cargo deny check advisories`, so a new advisory surfaces without a code change                                                                                                                                                                                                                                                            |
+| Workflow        | Runs on                                                                                  | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`        | Every pull request and every push to `main`                                              | The gate; integration tests against PostgreSQL 17 and 18 as service containers; `cargo doc` with warnings denied; `cargo deny check advisories`; the pull request title; the sign-offs; the map and skill-link checks; the browser checks; prettier and markdownlint on the Markdown files; the stack under Docker with the posture script; a dependency review of pull requests, which covers the npm tooling and the GitHub Actions that `cargo deny` does not (Mika, 2026-10-30) |
+| `podman.yml`    | Pull requests that touch `compose*.yaml`, `deploy/` or the `Dockerfile`, and every night | A Fedora VM with SELinux enforcing: the stack under rootless `podman compose`, then under Quadlet, each followed by the posture script                                                                                                                                                                                                                                                                                                                                              |
+| `workflows.yml` | Pull requests that touch `.github/`                                                      | zizmor and actionlint                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `release.yml`   | Every push to `main`                                                                     | release-plz, and when a new version has reached `main`, the build, attest, sign, verify and publish jobs                                                                                                                                                                                                                                                                                                                                                                            |
+| `scorecard.yml` | Weekly                                                                                   | OpenSSF Scorecard, shown as a badge                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `nightly.yml`   | Every night                                                                              | `cargo deny check advisories`, so a new advisory surfaces without a code change; after the first release, a Grype scan of the published image that fails on high or critical findings and uploads SARIF to code scanning                                                                                                                                                                                                                                                            |
 
 CodeQL runs through GitHub's default setup, a setting rather than a file. Every
 workflow starts with `permissions: {}` and raises them per job, every action is
@@ -284,10 +284,14 @@ flowchart LR
   runs inside the caller's run, so the reason for one workflow still holds. The
   attestations then name `build.yml` as their signer, and verification requires
   exactly that.
-- **What a release carries.** Static binaries for both architectures, a
-  CycloneDX SBOM of the crate graph, a multi-arch image on GHCR with BuildKit's
-  SBOM and provenance, `actions/attest` provenance for every artifact, and a
-  cosign keyless signature on the image.
+- **No stray network traffic.** Every job in `build.yml` and `release.yml`
+  starts with StepSecurity's Harden-Runner in block mode, which lets the job
+  reach only the hosts it needs (Mika, 2026-10-30, as is the crate list below).
+- **What a release carries.** Static binaries for both architectures, each
+  embedding its crate list through `cargo auditable` so a scanner can audit the
+  shipped file, a CycloneDX SBOM of the crate graph, a multi-arch image on GHCR
+  with BuildKit's SBOM and provenance, `actions/attest` provenance for every
+  artifact, and a cosign keyless signature on the image.
 - **Verify before publishing.** The last job before publishing runs
   `gh attestation verify --signer-workflow` with `build.yml` on each binary and
   on the image, and `cosign verify` with `build.yml`'s identity and issuer. If
@@ -364,9 +368,10 @@ the rule or test that now catches it, and the pull request.
   reporting, secret scanning with push protection, CodeQL's default setup,
   Dependabot alerts and security updates, immutable releases, approval before
   any outside contributor's workflow runs, and a ruleset on `main` that requires
-  a pull request, the gate, the title and sign-off checks, and squash merges,
-  and refuses force pushes and deletion. A script reads these settings through
-  `gh api` and reports drift; the maintainer runs it after each change.
+  a pull request, the gate, the title and sign-off checks, signed commits (Mika,
+  2026-10-30) and squash merges, and refuses force pushes and deletion. A script
+  reads these settings through `gh api` and reports drift; the maintainer runs
+  it after each change.
 
 ## 🙋 What only Mika does
 
@@ -376,6 +381,9 @@ the rule or test that now catches it, and the pull request.
 - Tell an agent when to commit: that instruction is what the agent's sign-off in
   Mika's name stands for.
 - Merge every pull request, and approve any change to the gate's configuration.
+- Register the project at <https://www.bestpractices.dev> and fill in the
+  passing-level form, which raises Scorecard's CII-Best-Practices check (Mika,
+  2026-10-30).
 
 ## 🚫 Not in phase 1
 
