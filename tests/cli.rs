@@ -467,6 +467,31 @@ fn healthcheck_fails_when_nothing_listens() {
 }
 
 #[test]
+fn healthcheck_names_a_bad_config_key_without_echoing_its_value() {
+    let dir = test_dir("config-leak");
+    let config = write_config(&dir, NEVER_BOUND, &dir.join("password"));
+    let mut body = fs::read_to_string(&config).unwrap();
+    body.push_str("password = \"s3cr3t-in-config\"\n");
+    fs::write(&config, body).unwrap();
+
+    let result = run_with_config("healthcheck", &config);
+
+    assert_eq!(result.code, Some(1), "{}", result.stderr);
+    assert!(result.stderr.starts_with("phyllon: "), "{}", result.stderr);
+    assert!(
+        result.stderr.contains("unknown field `password`"),
+        "{}",
+        result.stderr
+    );
+    assert!(
+        !result.stderr.contains("s3cr3t-in-config"),
+        "{}",
+        result.stderr
+    );
+    assert_eq!(result.stderr.lines().count(), 1, "{}", result.stderr);
+}
+
+#[test]
 fn serve_refuses_to_start_while_pgoptions_is_set() {
     let config = config_at("pgoptions", NEVER_BOUND);
 

@@ -69,6 +69,33 @@ mod support {
         let config = load_with_password_file(&dir, &file);
         config.database.password().unwrap().expose().to_owned()
     }
+
+    /// Loads `body`, which must fail as a parse error, and returns the error's
+    /// one-line message. Fails if `marker` shows in any form of the error,
+    /// since a parse error must carry no text of the file.
+    pub fn parse_error(name: &str, body: &str, marker: &str) -> String {
+        let error = load(name, body).unwrap_err();
+        for form in [
+            format!("{error}"),
+            format!("{error:?}"),
+            format!("{error:#?}"),
+        ] {
+            assert!(!form.contains(marker), "{marker:?} leaked into: {form}");
+        }
+        assert!(matches!(error, ConfigError::Parse(_)), "got {error:?}");
+        error.to_string()
+    }
+
+    /// A complete config with `extra` as line 2, before the `[database]` table.
+    pub fn config(extra: &str) -> String {
+        config_with(extra, "https://p.example")
+    }
+
+    /// A complete config with `line` added as line 8, at the end of the
+    /// `[database]` table.
+    pub fn database_with(line: &str) -> String {
+        format!("{}{line}\n", config_with("", "https://p.example"))
+    }
 }
 use support::*;
 
@@ -151,6 +178,165 @@ fn rejects_a_missing_required_key() {
     let error = load("missing-key", "public_url = \"https://p.example\"\n").unwrap_err();
 
     assert!(matches!(error, ConfigError::Parse(_)), "got {error:?}");
+}
+
+#[test]
+fn a_parse_error_names_an_unknown_key_but_not_its_value() {
+    let text = parse_error(
+        "leak-unknown",
+        &database_with("password = \"s3cr3t-unknown\""),
+        "s3cr3t-unknown",
+    );
+
+    assert_eq!(
+        text,
+        "invalid config: unknown field `password`, expected one of `host`, \
+         `port`, `name`, `user`, `password_file` (in `database`, line 8, column 1)"
+    );
+}
+
+#[test]
+fn a_parse_error_names_the_type_but_not_the_value() {
+    let text = parse_error(
+        "leak-type",
+        &database_with("port = \"s3cr3t-type\""),
+        "s3cr3t-type",
+    );
+
+    assert_eq!(
+        text,
+        "invalid config: invalid type: string, expected u16 \
+         (in `database.port`, line 8, column 8)"
+    );
+}
+
+#[test]
+fn a_parse_error_names_the_key_of_a_value_out_of_range() {
+    let text = parse_error("leak-range", &database_with("port = 70000"), "70000");
+
+    assert_eq!(
+        text,
+        "invalid config: invalid value: integer, expected u16 \
+         (in `database.port`, line 8, column 8)"
+    );
+}
+
+#[test]
+fn a_parse_error_names_a_missing_key() {
+    let body = "public_url = \"https://p.example\"\n\
+                [database]\n\
+                host = \"db\"\n\
+                user = \"phyllon_runtime\"\n\
+                password_file = \"pw\"\n";
+    let text = parse_error("missing-db-key", body, "phyllon_runtime");
+
+    assert_eq!(
+        text,
+        "invalid config: missing field `name` (in `database`, line 2, column 1)"
+    );
+}
+
+#[test]
+fn a_syntax_error_does_not_quote_an_unterminated_string() {
+    let body = config_with("source_url = \"s3cr3t-syntax", "https://p.example");
+    let text = parse_error("leak-syntax", &body, "s3cr3t-syntax");
+
+    assert_eq!(
+        text,
+        "invalid config: invalid basic string, expected `\"` (line 2, column 28)"
+    );
+}
+
+#[test]
+fn a_syntax_error_does_not_quote_a_string_with_a_bad_escape() {
+    let body = config_with("source_url = \"s3cr3t-\\q-escape\"", "https://p.example");
+    let text = parse_error("leak-escape", &body, "s3cr3t-");
+
+    assert_eq!(
+        text,
+        "invalid config: missing escaped value, expected `b`, `e`, `f`, `n`, \
+         `r`, `\\`, `\"`, `x`, `u`, `U` (line 2, column 23)"
+    );
+}
+
+#[test]
+fn no_parse_error_carries_text_of_the_file() {
+    let withheld = "details withheld";
+    // (body, a marker that only the file holds, a part of the message)
+    let cases = [
+        (
+            database_with("api_token = \"m-01\""),
+            "m-01",
+            "field `api_token`, expected",
+        ),
+        (
+            database_with("\"m-02`, expected `x\" = 1"),
+            "m-02",
+            withheld,
+        ),
+        (database_with("\"m-03 key\" = 1"), "m-03", withheld),
+        (database_with("\"m-04\\nin `x\" = 1"), "m-04", withheld),
+        (
+            database_with("port = \"m-05, expected u16\""),
+            "m-05",
+            "string, expected u16 (",
+        ),
+        (
+            database_with("port = 15.25"),
+            "15.25",
+            "type: floating point, expected u16",
+        ),
+        (
+            database_with("port = [\"m-06\"]"),
+            "m-06",
+            "type: sequence, expected u16",
+        ),
+        (
+            database_with("port = { m-07 = 1 }"),
+            "m-07",
+            "type: map, expected u16",
+        ),
+        (database_with("host = m-08"), "m-08", "must be quoted"),
+        (
+            database_with("host = 'm-09"),
+            "m-09",
+            "invalid literal string",
+        ),
+        (
+            database_with("host = \"\"\"m-10"),
+            "m-10",
+            "multi-line basic string",
+        ),
+        (
+            database_with("host = \"m-11\""),
+            "m-11",
+            "duplicate key (line 8, column 1)",
+        ),
+        (database_with("password: m-12"), "m-12", "key with no value"),
+        (database_with("m-13"), "m-13", "key with no value"),
+        (database_with("[m-14"), "m-14", "unclosed table"),
+        (database_with("host = \"\\uZZZZ m-15\""), "m-15", "unicode"),
+        (
+            database_with("when = 1979-13-27"),
+            "1979-13",
+            "invalid date",
+        ),
+        (
+            config("listen = \"m-16\""),
+            "m-16",
+            "address syntax (in `listen`, line 2",
+        ),
+        (
+            config("source_url = true"),
+            "true",
+            "boolean, expected a string",
+        ),
+        (config("m-17 = \"m-18\""), "m-18", "field `m-17`, expected"),
+    ];
+    for (index, (body, marker, part)) in cases.iter().enumerate() {
+        let text = parse_error(&format!("leak-table-{index}"), body, marker);
+        assert!(text.contains(part), "case {index}: {text}");
+    }
 }
 
 #[test]
