@@ -461,6 +461,7 @@ cat >"$pristine/rulesets_42.json" <<'JSON'
   {"type": "required_linear_history"}, {"type": "required_signatures"},
   {"type": "pull_request", "parameters": {"required_approving_review_count": 0,
    "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+   "require_extra_approval_for_unattributed_changes": true,
    "require_last_push_approval": false, "required_review_thread_resolution": false,
    "allowed_merge_methods": ["squash"], "required_reviewers": []}},
   {"type": "required_status_checks", "parameters": {

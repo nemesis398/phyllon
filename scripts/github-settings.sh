@@ -88,6 +88,9 @@ expected="$(jq -n '{
 				required_approving_review_count: 0,
 				dismiss_stale_reviews_on_push: false,
 				require_code_owner_review: false,
+				# The GitHub default. It asks for one more approval on a pull request
+				# Copilot opens alone, so it does nothing while 0 are required.
+				require_extra_approval_for_unattributed_changes: true,
 				require_last_push_approval: false,
 				required_review_thread_resolution: false,
 				allowed_merge_methods: ["squash"]
