@@ -192,10 +192,10 @@ narrower than the rhetoric suggests.
   (name the dials, ask the standing question) rather than a slogan.
 
 - **The Wrong Abstraction (Sandi Metz, 2016).** Verbatim: "duplication is far
-  cheaper than the wrong abstraction." Her repair prescription is aimed at the
-  exact failure mode R1 exists to prevent: when a shared abstraction has
-  accreted conditionals, re-inline it back into its callers and re-derive ("the
-  fastest way forward is back"). On this file's read, this is among the
+  cheaper than the wrong abstraction." Her repair prescription: when a shared
+  abstraction has accreted conditionals, re-inline it back into its callers and
+  re-derive ("the fastest way forward is back"). What it repairs is the exact
+  failure mode R1 exists to prevent. On this file's read, this is among the
   strongest mainstream endorsements of the whole compression discipline.
 
 - **Simple Made Easy (Rich Hickey, Strange Loop 2011).** Simple (un-complected,
