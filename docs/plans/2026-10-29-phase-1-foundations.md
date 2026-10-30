@@ -262,42 +262,44 @@ Done: merged in d1d7a1c (#3) on 2026-10-30.
   failing step's output otherwise), which Tasks 5 and 6 call; the empty library
   crate `phyllon` that Part 4 fills.
 
-- [ ] **Step 1: Pin the toolchain.** `rust-toolchain.toml`: `channel = "1.99.1"`
+- [x] **Step 1: Pin the toolchain.** `rust-toolchain.toml`: `channel = "1.99.1"`
       (or the newest stable at least 7 days old), components `rustfmt` and
       `clippy`.
-- [ ] **Step 2: Write `Cargo.toml`.** `name = "phyllon"`, `version = "0.0.0"`
+- [x] **Step 2: Write `Cargo.toml`.** `name = "phyllon"`, `version = "0.0.0"`
       (Task 21 sets `0.1.0`), `edition = "2024"`, `rust-version` equal to the
       pinned toolchain, `license = "AGPL-3.0-or-later"`, `repository`,
       `publish = false`, and the lint baseline from section 3.5 of the
       engineering research under `[lints.rust]` and `[lints.clippy]`
       (package-level tables, since there is no workspace). `src/main.rs` is
       `fn main() {}`; `src/lib.rs` is empty.
-- [ ] **Step 3: Write `clippy.toml`** with `allow-unwrap-in-tests`,
+- [x] **Step 3: Write `clippy.toml`** with `allow-unwrap-in-tests`,
       `allow-expect-in-tests`, `allow-panic-in-tests` and
       `allow-indexing-slicing-in-tests` set to `true`.
-- [ ] **Step 4: Write `deny.toml`.** Sources: crates.io only, unknown registries
+- [x] **Step 4: Write `deny.toml`.** Sources: crates.io only, unknown registries
       and git denied. Licenses allowed: `MIT`, `Apache-2.0`,
       `Apache-2.0 WITH LLVM-exception`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`,
       `Zlib`, `Unicode-3.0`, `MPL-2.0`, `CC0-1.0` and `AGPL-3.0-or-later`. Bans:
       `openssl` and `openssl-sys` denied; multiple versions warn.
-- [ ] **Step 5: Write `scripts/check.sh`** (`set -euo pipefail`), which runs in
+- [x] **Step 5: Write `scripts/check.sh`** (`set -euo pipefail`), which runs in
       order and prints each step's name: `cargo fmt --all --check`;
       `cargo clippy --all-targets --locked -- -D warnings`;
       `cargo nextest run --locked --no-tests=pass`; `cargo test --doc --locked`;
       `cargo shear`; `cargo deny check bans licenses sources`. A missing tool
       fails with its install command.
-- [ ] **Step 6: Write `.githooks/pre-commit`,** which runs `scripts/check.sh`
+- [x] **Step 6: Write `.githooks/pre-commit`,** which runs `scripts/check.sh`
       only when the staged files include `*.rs`, `Cargo.toml`, `Cargo.lock`,
       `clippy.toml`, `deny.toml` or `rust-toolchain.toml`, so a docs-only commit
       does not wait for the gate.
-- [ ] **Step 7: Run the gate.** Run `scripts/check.sh`. Expected: every step
+- [x] **Step 7: Run the gate.** Run `scripts/check.sh`. Expected: every step
       passes, exit 0.
-- [ ] **Step 8: Prove the gate bites.** Add
+- [x] **Step 8: Prove the gate bites.** Add
       `pub fn f() -> u8 { "1".parse().unwrap() }` to `src/lib.rs` and run
       `scripts/check.sh`. Expected: exit non-zero, output names
       `clippy::unwrap_used`. Remove the line.
-- [ ] **Step 9: Ship.** Title:
+- [x] **Step 9: Ship.** Title:
       `build: add the package, the toolchain pin and the gate script`.
+
+Done: merged in fd46d5c (#4) on 2026-10-30.
 
 ### Task 5: Claude Code hooks
 
