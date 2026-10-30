@@ -7,10 +7,11 @@
 #   scripts/ci/fedora-vm.sh [--copy PATH]... -- COMMAND [ARG]...
 #
 # Each --copy PATH (a file or a directory) is copied into the VM user's home
-# directory under its own base name before the command runs. COMMAND and its
-# arguments reach the VM's shell word for word, and the script's stdin is the
-# command's stdin. The exit status is the command's, or 255 if SSH failed; a
-# failure before the command runs exits 1 with a message.
+# directory before the command runs, under the base name of the path it
+# resolves to: a symlink is followed and arrives under its target's name.
+# COMMAND and its arguments reach the VM's shell word for word, and the
+# script's stdin is the command's stdin. The exit status is the command's, or
+# 255 if SSH failed; a failure before the command runs exits 1 with a message.
 #
 # The image is Fedora's, and nothing about it is trusted until it is checked:
 # the CHECKSUM file must carry a good OpenPGP signature by the release key whose
@@ -19,8 +20,11 @@
 # verified image is cached in $PHYLLON_VM_CACHE (default ~/.cache/phyllon-vm)
 # and never written to: each VM boots from a copy-on-write overlay. The SSH
 # client key and the VM's SSH host key are generated per run, so the client
-# trusts exactly this VM, and the overlay, the cloud-init seed and both keys
-# are deleted when the script exits, however it exits.
+# trusts exactly this VM. The host's private key and the cloud-init user-data
+# that carries it are deleted once the seed is built, and the overlay, the seed
+# (which still holds the host key) and the client key when the script exits,
+# however it exits. Only a SIGKILL skips that; the next start removes what such
+# a run left.
 #
 # Settings, all optional: PHYLLON_VM_CACHE (directory), PHYLLON_VM_CPUS
 # (default 2), PHYLLON_VM_MEMORY (MiB, default 4096), PHYLLON_VM_DISK (GiB the
@@ -33,11 +37,11 @@
 
 set -euo pipefail
 
-# Fedora 44 is the current stable release; Fedora 45 is due on 2026-11-03.
-# Compose 1.7 is Fedora 44's final release, and a release tree never changes
-# afterwards, so the names below always mean the same bytes. To move to a new
-# release, change all three values together; the release keys and their
-# fingerprints are listed at https://fedoraproject.org/security/.
+# Fedora 44, the current stable release when this was written. Compose 1.7 is
+# its final release, and a release tree never changes afterwards, so the names
+# below always mean the same bytes. To move to a new release, change all three
+# values together; the release keys and their fingerprints are listed at
+# https://fedoraproject.org/security/.
 release=44
 compose=1.7
 # "Fedora (44) <fedora-44-primary@fedoraproject.org>", rsa4096/DBFCF71C6D9F90A6.
@@ -105,11 +109,10 @@ for tool in qemu-system-x86_64 qemu-img cloud-localds gpgv curl sha256sum \
 	ssh ssh-keygen setpriv ss timeout; do
 	command -v "$tool" >/dev/null 2>&1 || die "$tool not found"
 done
-[[ -r /dev/kvm && -w /dev/kvm ]] ||
-	die "/dev/kvm is missing or not readable and writable by $(id -un)"
-
 cache="${PHYLLON_VM_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/phyllon-vm}"
 mkdir -p -- "$cache"
+# Absolute, because the overlay records the image's path as given.
+cache="$(realpath -- "$cache")"
 # Everything this run creates lives here, so one rm removes it. The overlay
 # can grow to gigabytes, which is why this is not under /tmp.
 run="$(mktemp -d -p "$cache" run.XXXXXX)"
@@ -150,6 +153,7 @@ trap 'exit 143' TERM
 fetch() {
 	curl --fail --silent --show-error --location --proto '=https' \
 		--proto-redir '=https' --retry 3 --connect-timeout 20 \
+		--speed-limit 1048576 --speed-time 30 \
 		--max-filesize "$3" --user-agent phyllon-dev-tooling \
 		--output "$2" -- "$1"
 }
@@ -264,7 +268,12 @@ EOF
 } >"$run/user-data"
 printf 'instance-id: phyllon-%s\n' "${run##*.}" >"$run/meta-data"
 cloud-localds "$run/seed.img" "$run/user-data" "$run/meta-data"
-rm -f -- "$run/host_ed25519"
+rm -f -- "$run/host_ed25519" "$run/user-data"
+
+# Checked this late so that the image checks run, and can be tested, without
+# KVM.
+[[ -r /dev/kvm && -w /dev/kvm ]] ||
+	die "/dev/kvm is missing or not readable and writable by $(id -un)"
 
 # Picks a port on 127.0.0.1 nothing listens on. QEMU binds it itself, so
 # another program can still take it first; then QEMU exits and the next
@@ -337,8 +346,9 @@ vm() { ssh "${ssh_opts[@]}" "$vm_user@127.0.0.1" "$@"; }
 
 deadline=$((SECONDS + boot_timeout))
 # User-mode networking accepts the connection before the guest's sshd runs,
-# so each attempt has its own time limit.
-until timeout 15 ssh "${ssh_opts[@]}" -n "$vm_user@127.0.0.1" true 2>/dev/null; do
+# so each attempt has its own time limit. --foreground lets Ctrl-C reach ssh.
+until timeout --foreground 15 ssh "${ssh_opts[@]}" -n "$vm_user@127.0.0.1" true \
+	2>"$run/ssh.log"; do
 	if ! kill -0 "$qemu_pid" 2>/dev/null; then
 		say "QEMU exited before SSH answered:"
 		cat -- "$run/qemu.log" >&2
@@ -347,6 +357,8 @@ until timeout 15 ssh "${ssh_opts[@]}" -n "$vm_user@127.0.0.1" true 2>/dev/null; 
 	fi
 	if ((SECONDS >= deadline)); then
 		tail -n 40 -- "$run/console.log" >&2 || true
+		say "the last SSH attempt said:"
+		cat -- "$run/ssh.log" >&2
 		die "SSH did not answer within $boot_timeout s"
 	fi
 	sleep 1
@@ -356,7 +368,7 @@ say "SSH answered after $(since "$boot") (port $port)"
 # Wait for cloud-init to finish, so the command does not race its last steps.
 # Exit 2 means it finished with warnings only.
 status=0
-timeout "$boot_timeout" ssh "${ssh_opts[@]}" -n "$vm_user@127.0.0.1" \
+timeout --foreground "$boot_timeout" ssh "${ssh_opts[@]}" -n "$vm_user@127.0.0.1" \
 	cloud-init status --wait --long >"$run/cloud-init.log" 2>&1 || status=$?
 if ((status == 2)); then
 	say "cloud-init finished with warnings:"

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
-# check-signoff.sh, and for scripts/github-settings.sh and scripts/posture.sh.
+# check-signoff.sh, for scripts/github-settings.sh and scripts/posture.sh, and
+# for the image checks of scripts/ci/fedora-vm.sh.
 # The title tests call the script with a title; the sign-off tests build a git
 # repository in a temporary directory, make commits with explicit identities
 # and run the script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the
 # test says. The settings tests put a stub gh first on PATH that answers from
 # fixture JSON, so they never reach GitHub, and the posture tests do the same
-# with a stub container engine. Run it with:
+# with a stub container engine. The tests of scripts/ci/fedora-vm.sh's trust
+# chain run it with stub gpgv, curl and QEMU, so they need neither the network
+# nor KVM. Run it with:
 #
 #   scripts/ci/test.sh
 #
@@ -999,6 +1002,317 @@ malformed_inspect_output_is_an_error() {
 	expect_status 2
 }
 
+# The Fedora VM's trust chain. fedora-vm.sh runs with stubs first on PATH:
+# gpgv writes $FVM_STATUS to its status fd and $FVM_TEXT as the signed text
+# and exits $FVM_GPGV_EXIT; curl copies the file the URL names from
+# $FVM_FIXTURES; qemu-img and cloud-localds create their output file; and
+# qemu-system-x86_64 lists the run directory and exits 1. Each stub logs its
+# call to $FVM_LOG. The real script, with its pinned fingerprint, decides.
+vm_script="$ci_dir/fedora-vm.sh"
+vm_release="$(sed -n 's/^release=//p' "$vm_script")"
+vm_compose="$(sed -n 's/^compose=//p' "$vm_script")"
+vm_pinned="$(sed -n 's/^key_fingerprint=//p' "$vm_script")"
+vm_image="Fedora-Cloud-Base-Generic-$vm_release-$vm_compose.x86_64.qcow2"
+vm_checksum="Fedora-Cloud-$vm_release-$vm_compose-x86_64-CHECKSUM"
+vm_other=D6179C63D7986F1490F5026BEA672792C859988B
+mkdir "$scratch/vmbin"
+cat >"$scratch/vmbin/gpgv" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+fd="" output=""
+while (($#)); do
+	case "$1" in
+	--keyring) shift 2 ;;
+	--status-fd) fd="$2"; shift 2 ;;
+	--output) output="$2"; shift 2 ;;
+	--) shift; break ;;
+	*) echo "stub gpgv: unexpected $1" >&2; exit 3 ;;
+	esac
+done
+[[ -n "$fd" && -n "$output" && $# == 1 ]] || { echo "stub gpgv: bad call" >&2; exit 3; }
+echo "gpgv $1" >>"$FVM_LOG"
+cat -- "$FVM_STATUS" >&"$fd"
+cp -- "$FVM_TEXT" "$output"
+exit "${FVM_GPGV_EXIT:-0}"
+STUB
+cat >"$scratch/vmbin/curl" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "curl $*" >>"$FVM_LOG"
+output=""
+while (($#)); do
+	case "$1" in
+	--output) output="$2"; shift 2 ;;
+	--) shift; break ;;
+	*) shift ;;
+	esac
+done
+[[ -n "$output" && $# == 1 ]] || { echo "stub curl: bad call" >&2; exit 3; }
+[[ -f "$FVM_FIXTURES/${1##*/}" ]] || { echo "curl: (22) 404" >&2; exit 22; }
+cp -- "$FVM_FIXTURES/${1##*/}" "$output"
+STUB
+cat >"$scratch/vmbin/qemu-img" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "qemu-img $*" >>"$FVM_LOG"
+: >"${@: -2:1}"
+STUB
+cat >"$scratch/vmbin/cloud-localds" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "cloud-localds $*" >>"$FVM_LOG"
+: >"$1"
+STUB
+cat >"$scratch/vmbin/qemu-system-x86_64" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "qemu-system-x86_64 $*" >>"$FVM_LOG"
+for arg in "$@"; do
+	case "$arg" in
+	*file=*/disk.qcow2,*)
+		disk="${arg#*file=}" disk="${disk%%,*}"
+		echo "run dir: $(cd "${disk%/disk.qcow2}" && ls -A | tr '\n' ' ')" >>"$FVM_LOG"
+		;;
+	esac
+done
+exit 1
+STUB
+chmod +x "$scratch/vmbin"/*
+
+# The directory of the running VM test: fixtures/, the stub inputs and log,
+# and the cache, which the script gets as the relative path "cache".
+vm_dir=""
+# The SHA-256 of the running test's image.
+vm_sum=""
+
+# Prints the VALIDSIG status line for signing key $1 with primary key $2.
+validsig() {
+	echo "[GNUPG:] VALIDSIG $1 2026-04-24 1777044852 0 4 0 1 8 01 $2"
+}
+
+# Sets up fixtures that pass: an image, the key bundle and CHECKSUM files
+# (whose bytes the stub gpgv ignores), a good signature by the pinned key and
+# a signed text listing the image's hash after another file's.
+new_vm() {
+	local sum
+	vm_dir="$(mktemp -d -p "$scratch")"
+	mkdir "$vm_dir/fixtures"
+	head -c 4096 /dev/urandom >"$vm_dir/fixtures/$vm_image"
+	echo key >"$vm_dir/fixtures/fedora.gpg"
+	echo signed >"$vm_dir/fixtures/$vm_checksum"
+	validsig "$vm_pinned" "$vm_pinned" >"$vm_dir/status"
+	sum="$(sha256sum "$vm_dir/fixtures/$vm_image")"
+	vm_sum="${sum%% *}"
+	printf '%s\n' "# $vm_image: 4096 bytes" \
+		"SHA256 (Fedora-Cloud-Base-AmazonEC2-$vm_release-$vm_compose.x86_64.raw.xz) = $(printf '%064d' 0)" \
+		"SHA256 ($vm_image) = $vm_sum" >"$vm_dir/text"
+}
+
+run_vm() {
+	status=0
+	: >"$vm_dir/log"
+	out="$(cd "$vm_dir" && PATH="$scratch/vmbin:$PATH" FVM_LOG="$vm_dir/log" \
+		FVM_FIXTURES="$vm_dir/fixtures" FVM_STATUS="$vm_dir/status" \
+		FVM_TEXT="$vm_dir/text" PHYLLON_VM_CACHE=cache \
+		"$vm_script" -- true </dev/null 2>&1)" || status=$?
+}
+
+# Expects the run to have failed before QEMU and left no run directory.
+expect_refused() {
+	expect_status 1
+	expect_out "$1"
+	if command grep -q '^qemu-system-x86_64' "$vm_dir/log"; then
+		echo "  QEMU ran"
+		return 1
+	fi
+	if compgen -G "$vm_dir/cache/run.*" >/dev/null; then
+		echo "  a run directory was left behind"
+		return 1
+	fi
+}
+
+# Expects that nothing unverified entered the cache.
+expect_empty_cache() {
+	local left
+	left="$(cd "$vm_dir/cache" && ls -A)"
+	[[ -z "$left" ]] || {
+		echo "  the cache holds: $left"
+		return 1
+	}
+}
+
+a_signature_by_another_key_is_refused() {
+	new_vm
+	validsig "$vm_other" "$vm_other" >"$vm_dir/status"
+	run_vm
+	expect_refused "signed by '$vm_other', not by the pinned key $vm_pinned"
+	expect_empty_cache
+	if command grep -q "curl .*/$vm_image" "$vm_dir/log"; then
+		echo "  the image was downloaded"
+		return 1
+	fi
+}
+
+# VALIDSIG names the signing key first and its primary key last; a subkey's
+# fingerprint must not stand in for the primary.
+a_pinned_signing_key_under_another_primary_is_refused() {
+	new_vm
+	validsig "$vm_pinned" "$vm_other" >"$vm_dir/status"
+	run_vm
+	expect_refused "not by the pinned key"
+	expect_empty_cache
+}
+
+two_signatures_are_refused() {
+	new_vm
+	{
+		validsig "$vm_pinned" "$vm_pinned"
+		validsig "$vm_other" "$vm_other"
+	} >"$vm_dir/status"
+	run_vm
+	expect_refused "not by the pinned key"
+	expect_empty_cache
+}
+
+a_signature_without_validsig_is_refused() {
+	new_vm
+	echo "[GNUPG:] GOODSIG DBFCF71C6D9F90A6 Fedora (44)" >"$vm_dir/status"
+	run_vm
+	expect_refused "signed by 'nobody'"
+	expect_empty_cache
+}
+
+a_failing_gpgv_is_refused() {
+	new_vm
+	FVM_GPGV_EXIT=1 run_vm
+	expect_refused "does not verify"
+	expect_empty_cache
+}
+
+an_image_with_another_hash_is_refused() {
+	new_vm
+	sed -i "s/= $vm_sum\$/= $(printf '%064d' 1)/" "$vm_dir/text"
+	run_vm
+	expect_refused "the downloaded image does not match the signed checksum"
+	if [[ -e "$vm_dir/cache/$vm_image" ]]; then
+		echo "  the image entered the cache"
+		return 1
+	fi
+}
+
+# Replaces the image's line in the signed text with the lines given.
+vm_lines() {
+	command grep -v "^SHA256 ($vm_image)" "$vm_dir/text" >"$vm_dir/text.new" || true
+	printf '%s\n' "$@" >>"$vm_dir/text.new"
+	mv -- "$vm_dir/text.new" "$vm_dir/text"
+}
+
+a_signed_text_without_the_image_is_refused() {
+	new_vm
+	vm_lines
+	run_vm
+	expect_refused "lists no single SHA-256 for $vm_image"
+}
+
+two_lines_for_the_image_are_refused() {
+	new_vm
+	vm_lines "SHA256 ($vm_image) = $vm_sum" "SHA256 ($vm_image) = $vm_sum"
+	run_vm
+	expect_refused "lists no single SHA-256"
+}
+
+a_malformed_hash_is_refused() {
+	new_vm
+	vm_lines "SHA256 ($vm_image) = ${vm_sum^^}"
+	run_vm
+	expect_refused "lists no single SHA-256"
+	new_vm
+	vm_lines "SHA256 ($vm_image) = ${vm_sum:1}"
+	run_vm
+	expect_refused "lists no single SHA-256"
+	new_vm
+	vm_lines "SHA256 ($vm_image) = $vm_sum trailing"
+	run_vm
+	expect_refused "lists no single SHA-256"
+}
+
+a_crlf_line_is_refused() {
+	new_vm
+	vm_lines "SHA256 ($vm_image) = $vm_sum"$'\r'
+	run_vm
+	expect_refused "lists no single SHA-256"
+}
+
+# The right hash under a name that only looks like the image's: a pattern
+# that treats the dots as wildcards, or matches a prefix, would accept them.
+a_near_miss_file_name_is_refused() {
+	local name
+	for name in "${vm_image//./X}" "$vm_image.xz" "x$vm_image" "${vm_image%.qcow2}"; do
+		new_vm
+		vm_lines "SHA256 ($name) = $vm_sum"
+		run_vm
+		expect_refused "lists no single SHA-256"
+	done
+}
+
+# The image passes, enters the cache read-only, and the VM boots from an
+# overlay on its absolute path. QEMU itself needs /dev/kvm; without access the
+# run must stop there, after the checks.
+a_verified_image_reaches_qemu() {
+	new_vm
+	run_vm
+	expect_out "image verified: Fedora $vm_release ($vm_compose), signed by $vm_pinned"
+	[[ -f "$vm_dir/cache/$vm_image" && ! -w "$vm_dir/cache/$vm_image" ]] || {
+		echo "  the image is not in the cache, or is writable"
+		return 1
+	}
+	command grep -q -- "^qemu-img create .* -b $vm_dir/cache/$vm_image " "$vm_dir/log" || {
+		echo "  qemu-img did not get the absolute backing path:"
+		cat "$vm_dir/log"
+		return 1
+	}
+	command grep -q -- "^curl .*--speed-limit 1048576 --speed-time 30 .*/$vm_image\$" "$vm_dir/log" || {
+		echo "  the image download has no stall limit:"
+		command grep '^curl' "$vm_dir/log"
+		return 1
+	}
+	if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+		expect_status 1
+		expect_out "QEMU did not start"
+		command grep -q -- '^qemu-system-x86_64 .*-enable-kvm' "$vm_dir/log" || {
+			echo "  QEMU did not run"
+			return 1
+		}
+		# The seed holds the host's private key; neither it nor the
+		# user-data built from it may outlive the seed's creation.
+		command grep -q '^run dir: .*seed\.img' "$vm_dir/log" || return 1
+		if command grep -Eq '^run dir: (.* )?(user-data|host_ed25519) ' "$vm_dir/log"; then
+			echo "  the host key or the user-data was left: $(command grep '^run dir' "$vm_dir/log")"
+			return 1
+		fi
+	else
+		expect_refused "/dev/kvm"
+	fi
+	if compgen -G "$vm_dir/cache/run.*" >/dev/null; then
+		echo "  a run directory was left behind"
+		return 1
+	fi
+}
+
+# A cached image is checked again on every start, without a download.
+a_cached_image_altered_later_is_refused() {
+	new_vm
+	run_vm
+	chmod u+w "$vm_dir/cache/$vm_image"
+	printf 'x' | dd of="$vm_dir/cache/$vm_image" bs=1 seek=100 conv=notrunc status=none
+	run_vm
+	expect_refused "the cached image does not match the signed checksum"
+	if command grep -q '^curl' "$vm_dir/log"; then
+		echo "  the warm start downloaded"
+		return 1
+	fi
+}
+
 tests=(
 	a_title_with_a_scope_passes
 	a_dependabot_cargo_title_passes
@@ -1071,6 +1385,19 @@ tests=(
 	the_host_pid_and_ipc_namespaces_fail
 	an_empty_inspect_answer_is_an_error
 	malformed_inspect_output_is_an_error
+	a_signature_by_another_key_is_refused
+	a_pinned_signing_key_under_another_primary_is_refused
+	two_signatures_are_refused
+	a_signature_without_validsig_is_refused
+	a_failing_gpgv_is_refused
+	an_image_with_another_hash_is_refused
+	a_signed_text_without_the_image_is_refused
+	two_lines_for_the_image_are_refused
+	a_malformed_hash_is_refused
+	a_crlf_line_is_refused
+	a_near_miss_file_name_is_refused
+	a_verified_image_reaches_qemu
+	a_cached_image_altered_later_is_refused
 )
 
 failed=0
