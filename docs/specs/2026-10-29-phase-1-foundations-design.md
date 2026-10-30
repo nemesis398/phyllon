@@ -168,7 +168,7 @@ networks with `Internal=true` on `db`, the volumes, Podman secrets, and
 `Notify=healthy`, so systemd starts the services in health order. The Phyllon
 unit names the minor line, such as `0.1`, rather than a digest, so
 `podman auto-update` follows patch releases and never crosses a database
-migration, and the install guide pins Podman's signature policy to the release
+migration, and the install guide pins Podman's signature policy to the build
 workflow's identity, so an image that workflow did not sign is refused.
 
 **The install guide**, `docs/install.md`, covers three paths (Docker, Podman and
@@ -277,14 +277,21 @@ flowchart LR
   the draft-then-publish order with its generated workflow intact, and otherwise
   a short build job of our own does the work. A decision record keeps the
   answer.
+- **SLSA Build Level 3** (added by Mika on 2026-10-30). Artifact attestations
+  alone reach Build Level 2; Level 3 needs the build isolated from the workflow
+  that starts it. So everything that builds or signs an artifact runs in one
+  reusable workflow, `build.yml`, which `release.yml` calls. A called workflow
+  runs inside the caller's run, so the reason for one workflow still holds. The
+  attestations then name `build.yml` as their signer, and verification requires
+  exactly that.
 - **What a release carries.** Static binaries for both architectures, a
   CycloneDX SBOM of the crate graph, a multi-arch image on GHCR with BuildKit's
   SBOM and provenance, `actions/attest` provenance for every artifact, and a
   cosign keyless signature on the image.
 - **Verify before publishing.** The last job before publishing runs
-  `gh attestation verify` on each binary and on the image, and `cosign verify`
-  with the workflow's identity and issuer. If either fails, the draft stays a
-  draft.
+  `gh attestation verify --signer-workflow` with `build.yml` on each binary and
+  on the image, and `cosign verify` with `build.yml`'s identity and issuer. If
+  either fails, the draft stays a draft.
 - **The release pull request.** A pull request that the workflow's own token
   opens starts no CI, so it could never pass the ruleset. Instead,
   `scripts/prepare-release.sh` runs `release-plz update` on the maintainer's

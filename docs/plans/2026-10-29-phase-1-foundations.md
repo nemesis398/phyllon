@@ -66,6 +66,14 @@ Read both before the first task.
   pre-release; images are tagged with the exact version and the minor line
   (`0.1.0` and `0.1`), never `latest` before 1.0; a breaking change or any
   database migration raises the minor number.
+- Release provenance reaches SLSA v1.0 Build Level 3 (decided by Mika on
+  2026-10-30): every release artifact is built and attested inside one reusable
+  workflow, `.github/workflows/build.yml`, which `release.yml` calls, so the
+  calling workflow cannot touch the build or the signing. Verification pins that
+  workflow with
+  `--signer-workflow nemesis398/phyllon/.github/workflows/build.yml`, and the
+  cosign identity is
+  `https://github.com/nemesis398/phyllon/.github/workflows/build.yml@refs/heads/main`.
 - Security headers, exact values:
   <!-- markdownlint-disable-next-line MD013 -->
   `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
@@ -1018,25 +1026,31 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       releases on.
 - [ ] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
       its generated workflow attach to the draft that release-plz created, then
-      publish only after verification. Note every edit the generated workflow
+      publish only after verification. Its build and attest steps have to run
+      inside a reusable workflow (`on: workflow_call`) that the release workflow
+      calls, for SLSA Build Level 3. Note every edit the generated workflow
       needed.
-- [ ] **Step 3: Try our own build job** in the same workflow: two native runners
-      build the static binaries, upload them to the draft, attest them, verify
-      them, publish.
+- [ ] **Step 3: Try our own build job:** a reusable workflow in which two native
+      runners build the static binaries and attest them; the calling workflow
+      uploads them to the draft, verifies them with `--signer-workflow` and
+      publishes.
 - [ ] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
       and check that `release_always = false` releases a merge from that branch
       and ignores an ordinary merge.
 - [ ] **Step 5: Decide and record.** dist stays if it fits the
-      draft-then-publish order with its generated workflow intact; otherwise the
-      own job. Write 0006 with what each needed. Then, after Mika agrees, delete
-      the spike repository.
+      draft-then-publish order and builds inside the reusable workflow with its
+      generated workflow intact; otherwise the own job. Check with
+      `gh attestation verify --signer-workflow` that each variant's attestation
+      names the reusable workflow as its signer, not the caller. Write 0006 with
+      what each needed. Then, after Mika agrees, delete the spike repository.
 
 ### Task 20: The release workflow
 
 **Files:**
 
 - Create: `release-plz.toml`, `scripts/prepare-release.sh`,
-  `.github/workflows/release.yml`, `deploy/compose.release.yaml.tmpl`
+  `.github/workflows/release.yml`, `.github/workflows/build.yml`,
+  `deploy/compose.release.yaml.tmpl`
 - Modify: `scripts/github-settings.sh` (if the release needs a setting)
 
 **Interfaces:**
@@ -1054,25 +1068,33 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 - [ ] **Step 2: Write `prepare-release.sh`** and run it with `--dry-run` on a
       scratch clone. Expected: the branch, the version in `Cargo.toml` and the
       changelog entry, no push.
-- [ ] **Step 3: Write `release.yml`** as 0006 decided, with a `concurrency`
-      group and per-job permissions. Jobs: `release-plz` (tag and draft; outputs
-      whether a release was created and its tag); binaries for
-      `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
+- [ ] **Step 3: Write `build.yml`** (`on: workflow_call`, with the version as
+      input and the binaries' names and the image digest as outputs), as 0006
+      decided. It does everything that produces or signs an artifact: binaries
+      for `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
       runners, with a CycloneDX SBOM each from `cargo-cyclonedx`; the image,
       built per architecture by digest and merged into one manifest tagged with
       the version and its minor line, with `sbom: true` and
       `provenance: mode=max`; `actions/attest` for every binary, SBOM and the
-      image digest; `cosign sign --yes` on the image digest; the release's
-      `compose.yaml`, rendered from the template with the image digest;
-      `verify`, which runs `gh attestation verify` on every file and on
-      `oci://ghcr.io/nemesis398/phyllon:<version>`, and `cosign verify` with
-      `--certificate-identity https://github.com/nemesis398/phyllon/.github/workflows/release.yml@refs/heads/main`
+      image digest; `cosign sign --yes` on the image digest. Each job holds only
+      the permissions its step needs (`attestations: write`, `id-token: write`,
+      `contents: read`, and `packages: write` for the image).
+- [ ] **Step 4: Write `release.yml`,** with a `concurrency` group and per-job
+      permissions. Jobs: `release-plz` (tag and draft; outputs whether a release
+      was created and its tag); `build`, which calls `build.yml` only when a
+      release was created; the release's `compose.yaml`, rendered from the
+      template with the image digest; `verify`, which runs
+      `gh attestation verify --signer-workflow nemesis398/phyllon/.github/workflows/build.yml`
+      on every file and on `oci://ghcr.io/nemesis398/phyllon:<version>`, and
+      `cosign verify` with
+      `--certificate-identity https://github.com/nemesis398/phyllon/.github/workflows/build.yml@refs/heads/main`
       and
       `--certificate-oidc-issuer https://token.actions.githubusercontent.com`;
       `publish`, which runs only when `verify` passed and turns the draft into a
       published pre-release.
-- [ ] **Step 4: Lint it.** Run `actionlint` and `zizmor`. Expected: no findings.
-- [ ] **Step 5: Ship.** Title:
+- [ ] **Step 5: Lint them.** Run `actionlint` and `zizmor` on both workflows.
+      Expected: no findings.
+- [ ] **Step 6: Ship.** Title:
       `ci: build, attest, sign and verify releases before publishing`. A merge
       of this pull request releases nothing, because `Cargo.toml` still says
       `0.0.0` and the branch is not a release branch.
@@ -1092,12 +1114,21 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
       binaries, their SBOMs and `compose.yaml`.
 - [ ] **Step 3: Mika makes the GHCR package public** in its package settings,
       since a new package starts private and the API cannot change that.
-- [ ] **Step 4: Verify from outside.** On a machine that did not build it:
-      `gh attestation verify phyllon-x86_64-unknown-linux-musl -R nemesis398/phyllon`,
-      `gh attestation verify oci://ghcr.io/nemesis398/phyllon:0.1.0 -R nemesis398/phyllon`,
-      and the `cosign verify` command from Task 20. Expected: all three succeed.
+- [ ] **Step 4: Verify from outside.** On a machine that did not build it, run
+      these two and the `cosign verify` command from Task 20. Expected: all
+      three succeed, and the attestation's predicate names `build.yml` as the
+      build workflow.
+
+  ```bash
+  signer=nemesis398/phyllon/.github/workflows/build.yml
+  gh attestation verify phyllon-x86_64-unknown-linux-musl \
+    -R nemesis398/phyllon --signer-workflow "$signer"
+  gh attestation verify oci://ghcr.io/nemesis398/phyllon:0.1.0 \
+    -R nemesis398/phyllon --signer-workflow "$signer"
+  ```
+
 - [ ] **Step 5: Spike the Podman signature policy.** Write a `policy.json` that
-      requires a `sigstoreSigned` keyless signature from the release workflow's
+      requires a `sigstoreSigned` keyless signature from the build workflow's
       identity for `ghcr.io/nemesis398/phyllon`, and pull `0.1` with it under
       rootless Podman. Expected: the pull succeeds, and a pull of an unsigned
       image under the same name prefix is refused. If Podman cannot match a
@@ -1124,8 +1155,9 @@ come from `brand/logo.svg`, `brand/logo-dark.svg` (in a `<picture>` with a
 - [ ] **Step 4: The map and skill checks bite.** One throwaway pull request with
       a module missing from the map and one with a dangling skill link both turn
       `scripts` red; close both unmerged.
-- [ ] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job and
-      records 0006 and, if written, 0007.
+- [ ] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job
+      (which shows the `--signer-workflow` check, the SLSA Build Level 3
+      evidence) and records 0006 and, if written, 0007.
 - [ ] **Step 6: The shell.** Link the `browser` run and its two screenshots.
 - [ ] **Step 7: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
       latest Scorecard run shows Pinned-Dependencies, Token-Permissions and
