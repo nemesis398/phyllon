@@ -12,11 +12,12 @@ description: >-
 # Review
 
 A model reads its own output as its own and misses its errors there, but finds
-them in code it reads as someone else's. Same-model self-review in one context
-added 0 to 12.9 points in the studies, and a weaker model reviewing a stronger
-one made results worse. So the review runs in a fresh context, ideally on
-another model family and never a weaker one, and nothing it says counts until a
-test or a tool confirms it. Sources: sections 2.3 and 8 (rule 12) of
+them in code it reads as someone else's. In the one study that compared
+reviewers (a preprint, one benchmark), same-model self-review gave 0 to +12.9
+points, and a weaker reviewer on a stronger model's draft cost 8.6 points. So
+the review runs in a fresh context, ideally on another model family and never a
+weaker one, and nothing it says counts until a test or a tool confirms it.
+Sources: sections 2.3 and 8 (rule 12) of
 [the engineering research](../../../docs/research/engineering-quality.md).
 
 ## Prepare the packet (author)

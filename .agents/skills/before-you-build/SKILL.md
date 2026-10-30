@@ -52,16 +52,18 @@ flowchart TD
    to plain calls. Weigh the candidates on the dials of the `conscience` skill.
 5. **Integrate it, pinned, behind a module of our own,** so the rest of `src/`
    depends on our interface, not on the crate's.
-6. Either way, write the **decision record**, then go on with a failing test
-   (rule 2 of [AGENTS.md](../../../AGENTS.md)), the gate (`scripts/check.sh`),
-   the `review` skill, and an update to the map and `docs/lessons.md`.
+6. Either way, write a **decision record** when the call is one a later
+   contributor might question (record 0001's test), then go on with a failing
+   test (rule 2 of [AGENTS.md](../../../AGENTS.md)), the gate
+   (`scripts/check.sh`), the `review` skill, and an update to the map and
+   `docs/lessons.md`.
 
 ## Vet a crate
 
 ```sh
 crate=<name>
 
-# It exists. An invented name exits 1 with "could not find". Inside the
+# It exists. An invented name exits 101 with "could not find". Inside the
 # repository, a crate already in the tree shows its locked version.
 cargo info "$crate"
 
@@ -119,13 +121,14 @@ npm view "$pkg" time --json |
     | map(select((.key | contains("-") | not) and .value < $cutoff))
     | max_by(.key | split(".") | map(tonumber))
     | "take: \(.key) of \(.value)"'
-npm install --save-dev --save-exact "$pkg@<version>"
+npm install --save-dev --save-exact --ignore-scripts "$pkg@<version>"
 npm audit
 ```
 
 CI's `dependency-review` job checks new npm and crate versions against the same
-license list and fails on any advisory. An action is pinned by commit SHA and an
-image by digest, each with its version in a trailing comment.
+license list and fails on any advisory. An action is pinned by commit SHA with
+its version in a trailing comment (`# v7.0.1`), and an image by tag and digest
+(`caddy:2.11.7@sha256:...`).
 
 ## Justify it in the pull request
 

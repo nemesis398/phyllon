@@ -102,7 +102,10 @@ scripts/ci/check-signoff.sh main HEAD
 ```
 
 The pre-commit hook in `.githooks/` runs `scripts/check.sh` when the commit
-touches Rust or gate files. Never skip it with `--no-verify`; fix what fails.
+touches Rust or Cargo files: `*.rs`, `Cargo.toml`, `Cargo.lock`, `clippy.toml`,
+`deny.toml`, `rust-toolchain.toml`, `rustfmt.toml` or `.rustfmt.toml`,
+`.cargo/config.toml`, `scripts/check.sh` or `.githooks/`. Never skip it with
+`--no-verify`; fix what fails.
 
 ## The pull request title
 
