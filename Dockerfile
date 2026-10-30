@@ -1,15 +1,10 @@
-# The base images, in one place. Each is pinned by the digest of its multi-arch
-# index, so the build is the same on amd64 and arm64. The comment above each
-# line names the tag the digest belongs to (Dockerfile syntax allows no comment
-# after a value). Phase 2 may move the final stage to gcr.io/distroless/cc, and
-# this is the only place that changes.
-
-# docker.io/library/rust:1.99.1-alpine
-ARG BUILDER_IMAGE=docker.io/library/rust@sha256:b1d5dd5a22a09404d3e798c0cf051b689077360374eb505fa5bb93c479693d87
-# gcr.io/distroless/static-debian13:nonroot
-ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian13@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
-
-FROM ${BUILDER_IMAGE} AS builder
+# The two FROM lines below are the only places that name a base image. They are
+# literal, with the tag and the digest of the multi-arch index (so the build is
+# the same on amd64 and arm64), because Dependabot reads only literal FROM
+# lines: it does not resolve a FROM that uses an ARG, and it needs the tag to
+# know which release to track. Phase 2's move to gcr.io/distroless/cc edits the
+# second line.
+FROM docker.io/library/rust:1.99.1-alpine@sha256:b1d5dd5a22a09404d3e798c0cf051b689077360374eb505fa5bb93c479693d87 AS builder
 
 RUN apk add --no-cache musl-dev
 
@@ -22,9 +17,11 @@ RUN cargo install --locked cargo-auditable@0.7.7
 # The image ships the toolchain that rust-toolchain.toml pins. The file itself
 # stays out of the build directory: rustup would read it, find clippy and
 # rustfmt missing from this image, and download them. The check fails the build
-# if the builder image and the pin ever drift apart.
+# if the builder image and the pin ever drift apart. The match is a fixed
+# string on a whole line, so a comment or a pattern character cannot pass it,
+# and an empty version finds no line and fails.
 COPY rust-toolchain.toml /tmp/rust-toolchain.toml
-RUN grep -q "channel = \"$(rustc --version | cut -d' ' -f2)\"" /tmp/rust-toolchain.toml
+RUN grep -qxF "channel = \"$(rustc --version | cut -d' ' -f2)\"" /tmp/rust-toolchain.toml
 
 WORKDIR /build
 
@@ -47,13 +44,15 @@ RUN find src -name '*.rs' -exec touch {} + \
     && if [ -z "$PHYLLON_GIT_COMMIT" ]; then unset PHYLLON_GIT_COMMIT; else export PHYLLON_GIT_COMMIT; fi \
     && cargo auditable build --release --locked
 
-FROM ${RUNTIME_IMAGE}
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 
 COPY --from=builder /build/target/release/phyllon /usr/local/bin/phyllon
 
 # The image sets neither PHYLLON_CONFIG nor a HEALTHCHECK. The compose file and
 # the Quadlet unit supply both.
-USER nonroot
+# 65532 is the nonroot user of distroless. The number lets Kubernetes verify
+# runAsNonRoot, which it cannot do with a name.
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/phyllon"]
 CMD ["serve"]

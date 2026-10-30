@@ -3,3 +3,5 @@ target/
 node_modules/
 .superpowers/
 secrets/
+.env
+.claude/settings.local.json
