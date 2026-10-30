@@ -73,3 +73,26 @@ npx markdownlint-cli2 --fix
 They are welcome, under the same rules as any other. You answer for every line
 you submit, whoever or whatever wrote it. The pull request says what ran, what
 did not, and what you are unsure of.
+
+## Skills for agents
+
+The repository ships its agent skills in `.agents/skills/`, which Codex reads
+directly. Claude Code reads them through the links in `.claude/skills/`, and CI
+runs `scripts/ci/check-skill-links.sh` to check that every skill has its link.
+
+If you keep a personal Claude Code skill in `~/.claude/skills/` with the name of
+a shipped one, such as `review`, yours runs and the shipped one does not: Claude
+Code ranks a personal skill above a project skill of the same name. No setting
+in the repository can change that. `skillOverrides` matches skills by name only,
+so an entry there would hide the name, not your copy alone, and
+`strictPluginOnlyCustomization`, which can block personal skills, works only in
+managed settings and blocks project skills as well. So rename your copy, both
+its directory and its `name` field, or remove it while you work here. Codex
+keeps both: two skills of one name can both appear in its skill selector.
+
+Sources, checked on 2026-10-30 with Claude Code 2.1.314: the
+[skills page](https://code.claude.com/docs/en/skills.md), sections "Resolve
+skills that share a name" and "Override skill visibility from settings"; the
+[settings reference](https://code.claude.com/docs/en/settings-reference.md)
+entries for `skillOverrides` and `strictPluginOnlyCustomization`; and
+[Codex's skills page](https://developers.openai.com/codex/skills).
