@@ -1,8 +1,8 @@
 # Phyllon Brand
 
 The name, mark, colors and type of Phyllon, chosen on 2026-10-29. Everything in
-this folder except this guide is produced by `generate.py`; change the script,
-never the files.
+this folder except this guide and `social-preview.png` is produced by
+`generate.py`; change the script, never the files.
 
 ## 🌱 The story
 
@@ -19,16 +19,29 @@ spiral arms you see; they follow from the formula, and the same script always
 writes the same bytes. A deterministic logo for a platform built to be
 deterministic.
 
-| File            | Use                                                                                                                |
-| --------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `logo.svg`      | The mark on light backgrounds                                                                                      |
-| `logo-dark.svg` | The mark on dark backgrounds                                                                                       |
-| `logo-mono.svg` | One ink color, for worksheets and anything printed in black and white                                              |
-| `favicon.svg`   | Browser tab and app icon: a blue tile, 21 seeds and a large leaf, because 119 seeds do not survive 16 pixels       |
-| `lockup.svg`    | Mark and wordmark side by side. The wordmark is live text in Fraunces; convert it to paths before it goes to print |
+| File                 | Use                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logo.svg`           | The mark on light backgrounds                                                                                                                        |
+| `logo-dark.svg`      | The mark on dark backgrounds                                                                                                                         |
+| `logo-mono.svg`      | One ink color, for worksheets and anything printed in black and white                                                                                |
+| `favicon.svg`        | Browser tab and app icon: a blue tile, 21 seeds and a large leaf, because 119 seeds do not survive 16 pixels                                         |
+| `lockup.svg`         | Mark and wordmark side by side. The wordmark is live text in Fraunces; convert it to paths before it goes to print                                   |
+| `social-preview.svg` | The lockup and a line about Phyllon on a 1280 by 640 page, for links to the repository. The text is live, in Fraunces and Atkinson Hyperlegible Next |
+| `social-preview.png` | The preview rendered for GitHub, which takes a PNG uploaded in the repository settings; the API cannot set it                                        |
 
 Keep a clear space of a quarter of the mark's width around it. Do not recolor
 the mark except through the mono version, and do not redraw it by hand.
+
+To render the preview, download both fonts (SIL Open Font License, from
+github.com/google/fonts) into a directory, write a `fonts.conf` that includes
+`/etc/fonts/fonts.conf` and adds that directory, and run
+`magick RSVG:brand/social-preview.svg -strip brand/social-preview.png` with
+`FONTCONFIG_FILE` set to the absolute path of that `fonts.conf`, so nothing is
+installed. A relative path would quietly load the system's configuration
+instead. `RSVG:` picks librsvg, the library behind `rsvg-convert`, and `-strip`
+leaves out the timestamps, so the same input gives the same bytes. Check the
+result: without the fonts, the wordmark falls back to another serif and comes
+out wider.
 
 ## 🎨 Colors: Frühling
 
