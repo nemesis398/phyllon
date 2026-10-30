@@ -1,0 +1,119 @@
+/* The shell's layout and type. The colors come from palette.css, which is
+   brand/palette.css served as it is. The fonts are same-origin files, because
+   the content security policy allows nothing else. */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/assets/fonts/atkinson-hyperlegible-next-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/assets/fonts/atkinson-hyperlegible-next-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/assets/fonts/fraunces-600.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--ph-blue);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible {
+  outline: 3px solid var(--ph-blue);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.site-header,
+.site-footer {
+  padding: 1rem max(1.5rem, calc((100vw - 40rem) / 2 + 1.5rem));
+  background: var(--ph-surface);
+}
+
+.site-header {
+  border-bottom: 1px solid var(--ph-line);
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  border-top: 1px solid var(--ph-line);
+  color: var(--ph-muted);
+  font-size: 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.wordmark {
+  color: var(--ph-blue);
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0 0 1rem;
+}

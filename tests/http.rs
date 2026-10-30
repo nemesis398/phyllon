@@ -203,7 +203,7 @@ async fn an_unknown_path_is_404() {
     let response = send(&app, Method::GET, "/no-such-page").await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(text(response).await, "not found\n");
+    assert!(text(response).await.contains("Page not found"));
 }
 
 #[tokio::test]
@@ -222,7 +222,7 @@ async fn a_panicking_handler_returns_a_generic_500_and_the_server_keeps_serving(
     assert_security_headers(&response, "the 500 of a caught panic");
     let body = text(response).await;
     assert!(!body.contains("boom"), "the panic message leaked: {body}");
-    assert_eq!(body, "internal server error\n");
+    assert!(body.contains("Something went wrong"), "{body}");
 
     let response = send(&app, Method::GET, "/ok").await;
     assert_eq!(response.status(), StatusCode::OK);

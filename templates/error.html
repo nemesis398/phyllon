@@ -1,0 +1,6 @@
+{% extends "base.html" %} {% block title %}{{ heading }} - {{ strings::SITE_NAME
+}}{% endblock %} {% block content %}
+<h1>{{ heading }}</h1>
+<p>{{ text }}</p>
+<p><a href="/">{{ strings::BACK_TO_START }}</a></p>
+{% endblock %}

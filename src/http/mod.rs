@@ -13,6 +13,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::error;
 
 use crate::db;
+use crate::web;
 use headers::SECURITY_HEADERS;
 
 /// The repository, where the source of a build without a commit is offered.
@@ -65,9 +66,7 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
-            AppError::Internal => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error\n").into_response()
-            }
+            AppError::Internal => web::error_page(),
         }
     }
 }
@@ -94,7 +93,8 @@ pub fn router(state: AppState) -> Router {
     let routes = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
-        .fallback(not_found)
+        .merge(web::routes())
+        .fallback(web::not_found)
         .with_state(state);
     with_security_layers(routes)
 }
@@ -131,8 +131,4 @@ async fn readyz(State(state): State<AppState>) -> Response {
     } else {
         (StatusCode::SERVICE_UNAVAILABLE, "database unavailable\n").into_response()
     }
-}
-
-async fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, "not found\n").into_response()
 }

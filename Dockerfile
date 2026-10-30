@@ -40,6 +40,10 @@ RUN mkdir src \
 # as a commit.
 ARG PHYLLON_GIT_COMMIT
 COPY src ./src
+# The pages and assets are compiled into the binary (include_bytes! and Askama).
+COPY templates ./templates
+COPY assets ./assets
+COPY brand ./brand
 RUN find src -name '*.rs' -exec touch {} + \
     && if [ -z "$PHYLLON_GIT_COMMIT" ]; then unset PHYLLON_GIT_COMMIT; else export PHYLLON_GIT_COMMIT; fi \
     && cargo auditable build --release --locked

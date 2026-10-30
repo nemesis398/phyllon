@@ -41,6 +41,10 @@ stack_checks() {
 		if [[ "$code" == 200 ]]; then pass "$path answers 200"; else fail "$path answers $code, want 200"; fi
 	done
 
+	# The start page is the shell's HTML, through Caddy.
+	out="$(curl -sk "https://localhost:8443/" || true)"
+	if [[ "$out" == *Phyllon* ]]; then pass "/ contains Phyllon"; else fail "/ does not contain Phyllon"; fi
+
 	# The answers are read from stdout; stderr goes to a file for the message.
 	out="$(sql postgres 'SHOW password_encryption' 2>"$work/err" || true)"
 	if [[ "$out" == scram-sha-256 ]]; then
