@@ -628,7 +628,7 @@ succeeds only when the status line starts with `HTTP/1.1 200`. `healthcheck`
 probes `probe_addr(config.listen)` with a 3-second timeout. `serve` logs to
 stderr and shuts down cleanly on SIGTERM and Ctrl-C.
 
-- [ ] **Step 1: Write the failing tests** in `tests/cli.rs`:
+- [x] **Step 1: Write the failing tests** in `tests/cli.rs`:
       `probe_succeeds_against_a_running_server`;
       `probe_fails_when_nothing_listens`;
       `probe_fails_within_3s_when_the_server_never_answers` (assert under 4 s);
@@ -640,13 +640,15 @@ stderr and shuts down cleanly on SIGTERM and Ctrl-C.
       the database at `127.0.0.1:1`, waits for the port, runs
       `phyllon healthcheck` with the same config, expects exit 0, then stops the
       server).
-- [ ] **Step 2: Run them.** Expected: compile errors.
-- [ ] **Step 3: Implement `cli.rs` and `main.rs`**
+- [x] **Step 2: Run them.** Expected: compile errors.
+- [x] **Step 3: Implement `cli.rs` and `main.rs`**
       (`fn main() -> ExitCode { phyllon::cli::run() }`).
-- [ ] **Step 4: Run the tests and the gate.** Expected: six passes;
+- [x] **Step 4: Run the tests and the gate.** Expected: six passes;
       `scripts/check.sh` passes.
-- [ ] **Step 5: Ship.** Title:
+- [x] **Step 5: Ship.** Title:
       `feat(cli): add the serve and healthcheck commands`.
+
+Done: merged in 2559866 (#17) on 2026-10-30.
 
 ## Part 5: Running it (PHY-16)
 
