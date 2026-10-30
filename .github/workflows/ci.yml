@@ -95,9 +95,7 @@ jobs:
         with:
           tool: cargo-nextest@0.9.149
           fallback: none
-      # The tests that need PostgreSQL are the ignored ones. None exists until
-      # Task 9, which removes --no-tests=pass.
-      - run: cargo nextest run --locked --run-ignored only --no-tests=pass
+      - run: cargo nextest run --locked --run-ignored only
 
   sign-off:
     name: sign-off

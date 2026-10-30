@@ -511,7 +511,7 @@ pub enum ConfigError { Read { path: PathBuf, source: std::io::Error }, Parse(tom
 Defaults: `listen = "0.0.0.0:8080"`, `database.port = 5432`. Every table uses
 `deny_unknown_fields`.
 
-- [ ] **Step 1: Write the failing tests** in `tests/config.rs`:
+- [x] **Step 1: Write the failing tests** in `tests/config.rs`:
       `loads_a_minimal_config` (only `public_url` and
       `database.{host,name,user,password_file}` given: `listen` is
       `0.0.0.0:8080`, port 5432); `rejects_an_unknown_key` (`listn = "…"`:
@@ -523,15 +523,17 @@ Defaults: `listen = "0.0.0.0:8080"`, `database.port = 5432`. Every table uses
       `Display` text contains `database.password_file` and the path);
       `secret_debug_is_redacted`
       (`format!("{:?}", secret) == "Secret([redacted])"`).
-- [ ] **Step 2: Run them.** Run `cargo nextest run --test config`. Expected:
+- [x] **Step 2: Run them.** Run `cargo nextest run --test config`. Expected:
       compile errors, because the module does not exist.
-- [ ] **Step 3: Implement `src/config.rs`** to the interface above. `public_url`
+- [x] **Step 3: Implement `src/config.rs`** to the interface above. `public_url`
       must start with `https://` or `http://`. `password()` strips one trailing
       `\n` or `\r\n`, nothing else.
-- [ ] **Step 4: Run the tests.** Expected: six passes. Then run
+- [x] **Step 4: Run the tests.** Expected: six passes. Then run
       `scripts/check.sh`; it passes.
-- [ ] **Step 5: Ship.** Title:
+- [x] **Step 5: Ship.** Title:
       `feat(config): load the TOML config with secrets from files`.
+
+Done: merged in 96fb377 (#14) on 2026-10-30.
 
 ### Task 9: Database readiness and the HTTP layer
 
