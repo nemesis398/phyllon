@@ -26,13 +26,16 @@ trailer. That person reviews the pull request before it merges.
 ## Pull requests
 
 - One concern per pull request.
+- New or changed behavior comes with tests. Write each test first and watch it
+  fail. A bug fix comes with a test that reproduces the bug. Cover the edge
+  cases listed in rule 11 of [AGENTS.md](AGENTS.md).
 - About 400 changed lines at most, not counting lockfiles, generated files and
   vendored text such as license texts.
 - Every pull request is squash merged, so the title becomes the commit on
   `main`. Make it a [conventional commit](https://www.conventionalcommits.org/)
   of at most 72 characters, for example `feat: add the health endpoint`.
-- Fill in the pull request template. It asks for the sign-off, what ran, what
-  did not, and what you are unsure of.
+- Fill in the pull request template. It asks for the sign-off, the tests, what
+  ran, what did not, and what you are unsure of.
 
 ## Turn on the hooks
 
