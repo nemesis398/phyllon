@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Runs the gate, scripts/check.sh, when a commit touches Rust code or the
-# gate's configuration, so a docs-only commit does not wait for it. Turn it on
-# once per clone with:
+# gate's configuration, so a docs-only commit does not wait for it. The staged
+# paths decide whether the gate runs, but the gate checks the working tree,
+# not the index: an unstaged fix or an untracked file the commit needs can
+# make it pass. CI checks exactly what was committed. Turn it on once per
+# clone with:
 #
 #   git config core.hooksPath .githooks
 #
@@ -23,6 +26,10 @@ gate_paths=(
 	':(glob)**/clippy.toml'
 	':(glob)**/deny.toml'
 	':(glob)**/rust-toolchain.toml'
+	':(glob)**/*rustfmt.toml'
+	':(glob)**/.cargo/config.toml'
+	':(glob)scripts/check.sh'
+	':(glob).githooks/**'
 )
 
 # Added, copied, deleted, modified and type-changed paths. --no-renames splits a

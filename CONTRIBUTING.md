@@ -45,7 +45,8 @@ git config core.hooksPath .githooks
 ```
 
 The pre-commit hook then runs the gate before each commit that touches Rust or
-Cargo files.
+Cargo files. It checks your working tree, not what you staged, so unstaged
+changes and untracked files count; CI checks exactly what was committed.
 
 ## The gate
 

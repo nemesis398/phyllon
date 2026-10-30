@@ -26,6 +26,13 @@ toolchain="$(rustc --version)" ||
 	fail "the toolchain rust-toolchain.toml pins is not installed. In the repository root, run:" \
 		"  rustup toolchain install"
 printf 'check.sh: %s\n' "$toolchain"
+# A cargo without rustup ignores rust-toolchain.toml, so compare the version.
+pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+[[ -n "$pinned" ]] || fail "no channel found in rust-toolchain.toml."
+read -r _ version _ <<<"$toolchain"
+[[ "$version" == "$pinned" ]] ||
+	fail "rustc is $version, but rust-toolchain.toml pins $pinned." \
+		"Install rustup from https://rustup.rs, which follows the pin."
 cargo fmt --version >/dev/null 2>&1 ||
 	fail "rustfmt not found. rust-toolchain.toml lists it; with rustup run:" \
 		"  rustup component add rustfmt"
@@ -49,6 +56,6 @@ step cargo fmt --all --check
 step cargo clippy --all-targets --locked -- -D warnings
 step cargo nextest run --locked --no-tests=pass
 step cargo test --doc --locked
-step cargo shear
+step cargo shear --deny-warnings
 step cargo deny check bans licenses sources
 printf '\ncheck.sh: all %d steps passed\n' "$steps"
