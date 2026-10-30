@@ -5,8 +5,7 @@ tool runs it. They are short on purpose. Hooks and CI enforce the ones that
 matter most, because an instruction file alone does not reliably change what an
 agent does.
 
-`docs/map.md` and the skills under `.agents/skills/` named below arrive later in
-phase 1, so they do not exist yet.
+`docs/map.md` arrives later in phase 1, so it does not exist yet.
 
 ## Rules
 
@@ -104,3 +103,14 @@ Claude Code reads `.claude/settings.json`, which names the superpowers plugin
 for brainstorming, plans, test-driven development and debugging. Naming it turns
 it on but does not download it, so install it once on your machine with
 `/plugin install superpowers@claude-plugins-official`.
+
+## Hooks
+
+Claude Code runs the gate as a Stop hook that `.claude/settings.json` names.
+Codex CLI runs hooks too, from a `.codex/hooks.json` you have reviewed and
+trusted, but this repository ships none
+([Codex hooks](https://developers.openai.com/codex/hooks), checked 2026-10-30).
+So for Codex, as for any tool without a Stop hook here, the git pre-commit hook
+in `.githooks/` and CI are the only gate: turn the hook on with
+`git config core.hooksPath .githooks`, and run `scripts/check.sh` yourself
+before you say done, because the hook skips commits without Rust or gate files.
