@@ -3,6 +3,8 @@
 
 [Unit]
 Description=Phyllon
+# Requires=, unlike the proxy's Wants=: Phyllon is restarted along with its
+# database, whose image is pinned by digest, so auto-update never restarts it.
 Requires=phyllon-db.service
 After=phyllon-db.service
 

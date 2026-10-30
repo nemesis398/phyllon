@@ -3,7 +3,11 @@
 
 [Unit]
 Description=Caddy in front of Phyllon
-Requires=phyllon.service
+# Like compose's depends_on, this orders the start only: starting the proxy
+# starts Phyllon, and waits until it is healthy. Requires= would also stop or
+# restart Caddy whenever Phyllon is stopped or restarted, which podman
+# auto-update does on each new image.
+Wants=phyllon.service
 After=phyllon.service
 
 [Container]
