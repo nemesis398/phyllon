@@ -9,3 +9,7 @@ __pycache__/
 
 # Node tooling
 node_modules/
+
+# Local deployment secrets and settings (compose.yaml)
+secrets/
+.env

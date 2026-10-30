@@ -156,6 +156,25 @@ jobs:
           # name and ignores the version, so this covers both.
           allow-dependencies-licenses: pkg:npm/argparse
 
+  # The compose stack under Docker, with the image built from this commit:
+  # stack-test.sh starts it from .env.example, checks TLS, the database roles
+  # and SCRAM, and ends with the posture script. The plan's Task 13 adds the
+  # same run under rootless Podman with SELinux.
+  stack-docker:
+    name: stack-docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The argument without a value takes it from the environment.
+      - run: docker build --build-arg PHYLLON_GIT_COMMIT --tag phyllon:ci .
+        env:
+          PHYLLON_GIT_COMMIT: ${{ github.sha }}
+      - run: scripts/stack-test.sh docker phyllon:ci
+
   markdown:
     name: markdown
     runs-on: ubuntu-latest
@@ -193,7 +212,8 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck --version | grep -Fx 'version: 0.11.0'
-          git ls-files -z -- ':(glob)scripts/**/*.sh' ':(glob).githooks/*' |
+          git ls-files -z -- ':(glob)scripts/**/*.sh' ':(glob).githooks/*' \
+            ':(glob)deploy/**/*.sh' |
             xargs -0 shellcheck
       - run: scripts/ci/test.sh
       - run: scripts/hooks/test.sh

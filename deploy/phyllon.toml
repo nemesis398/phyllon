@@ -1,0 +1,18 @@
+# Phyllon's config for compose.yaml, mounted at /etc/phyllon/phyllon.toml. It
+# holds no secret: the password is a file that compose mounts.
+
+listen = "0.0.0.0:8080"
+# The address people reach the site at. Change it along with PHYLLON_DOMAIN
+# and HTTPS_PORT in .env, for example to "https://phyllon.example.org" for a
+# public name on port 443.
+public_url = "https://localhost:8443"
+# Where the running version's source is offered. Unset, it is this build's
+# commit in the Phyllon repository; set it when you run a modified version.
+# source_url = "https://git.example.org/phyllon"
+
+[database]
+host = "db"
+port = 5432
+name = "phyllon"
+user = "phyllon_runtime"
+password_file = "/run/secrets/db_runtime_password"

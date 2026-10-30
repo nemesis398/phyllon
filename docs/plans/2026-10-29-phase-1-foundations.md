@@ -664,7 +664,7 @@ Done: merged in 2559866 (#17) on 2026-10-30.
   command `serve`, running as `nonroot`; the build argument
   `PHYLLON_GIT_COMMIT`.
 
-- [ ] **Step 1: Write the Dockerfile.** Builder: `rust:1.99.1-alpine` pinned by
+- [x] **Step 1: Write the Dockerfile.** Builder: `rust:1.99.1-alpine` pinned by
       digest, `apk add musl-dev`, `cargo install --locked cargo-auditable` at a
       pinned version (the newest one at least 7 days old, matching the
       Dependabot cooldown), then `cargo auditable build --release --locked`, so
@@ -675,21 +675,23 @@ Done: merged in 2559866 (#17) on 2026-10-30.
       the top, since phase 2 may move to `distroless/cc`. `.dockerignore`
       excludes `target/`, `.git/`, `node_modules/`, `.superpowers/` and
       `secrets/`.
-- [ ] **Step 2: Build and inspect.** Run
+- [x] **Step 2: Build and inspect.** Run
       <!-- markdownlint-disable-next-line MD013 -->
       `docker build --build-arg PHYLLON_GIT_COMMIT=$(git rev-parse HEAD) -t phyllon:dev .`,
       then `docker run --rm phyllon:dev --version` (prints `phyllon 0.0.0`) and
       `docker image inspect phyllon:dev --format '{{.Config.User}}'` (prints
       `nonroot` or `65532`).
-- [ ] **Step 3: Confirm the binary is static.** Run
+- [x] **Step 3: Confirm the binary is static.** Run
       `docker run --rm --entrypoint '' phyllon:dev /usr/local/bin/phyllon --version`
       on the distroless base, which has no libc; it prints the version.
-- [ ] **Step 4: Confirm the binary lists its crates.** Copy it out of the image
+- [x] **Step 4: Confirm the binary lists its crates.** Copy it out of the image
       with `docker create` and `docker cp`, then run
       `readelf -S phyllon | grep .dep-v0` (or `objdump -h`). Expected: the
       `.dep-v0` section is there. Phase 1 stops at the section; a scanner reads
       it from Task 21 on.
-- [ ] **Step 5: Ship.** Title: `build: build a static image on distroless`.
+- [x] **Step 5: Ship.** Title: `build: build a static image on distroless`.
+
+Done: merged in 66c7a5a (#19) on 2026-10-30.
 
 ### Task 12: The compose stack and its posture
 
@@ -712,7 +714,9 @@ Done: merged in 2559866 (#17) on 2026-10-30.
       (`edge`, and `db` with `internal: true`) and the volumes `db-data` and
       `caddy-data`, as the design's table describes. `phyllon` uses
       `image: ${PHYLLON_IMAGE:-ghcr.io/nemesis398/phyllon:0.1}`,
-      `PHYLLON_CONFIG=/etc/phyllon/phyllon.toml`, the runtime password secret, a
+      `PHYLLON_CONFIG=/etc/phyllon/phyllon.toml`, the runtime password file
+      mounted read-only at `/run/secrets/db_runtime_password` (a `volumes:` bind
+      mount with `:ro,z`, not compose `secrets:`; Mika, 2026-10-30), a
       healthcheck of `["CMD", "/usr/local/bin/phyllon", "healthcheck"]`, and
       `depends_on: db: condition: service_healthy`. `db` runs as `999:999` with
       `POSTGRES_DB=phyllon`, `POSTGRES_PASSWORD_FILE`,
@@ -748,9 +752,10 @@ Done: merged in 2559866 (#17) on 2026-10-30.
       non-root user; port bindings only on `proxy`; and for `phyllon` a
       read-only root.
 - [ ] **Step 6: Write `scripts/stack-test.sh`.** It creates the three secrets
-      the way the install guide will (`umask 077; openssl rand -base64 32`),
-      copies `.env.example`, sets `PHYLLON_IMAGE` to a locally built image when
-      given, runs `compose up -d --wait`, and checks:
+      the way the install guide will (`mkdir -m 700 secrets`, then
+      `(umask 222; openssl rand -base64 32 > secrets/<name>)` for each), copies
+      `.env.example`, sets `PHYLLON_IMAGE` to a locally built image when given,
+      runs `compose up -d --wait`, and checks:
       `curl -fsk https://localhost:8443/healthz` and `/readyz` answer 200;
       `SHOW password_encryption` answers `scram-sha-256`; `pg_hba_file_rules`
       holds no `trust` and no `md5` rule; `CREATE TABLE t (i int)` as
@@ -808,7 +813,9 @@ Done: merged in 2559866 (#17) on 2026-10-30.
       `~/.config/phyllon/phyllon.toml`, `Image=ghcr.io/nemesis398/phyllon:0.1`
       with `AutoUpdate=registry`, and the same posture settings as compose
       (`ReadOnly=`, `DropCapability=ALL`, `NoNewPrivileges=true`, `Memory=`,
-      `PidsLimit=`).
+      `PidsLimit=`). The proxy unit adds `AddCapability=CAP_NET_BIND_SERVICE`,
+      for the same reason as compose: the caddy binary carries that file
+      capability and does not start without it (Mika, 2026-10-30).
 - [ ] **Step 5: Write `scripts/quadlet-test.sh`,** which installs the units for
       the VM user, creates the Podman secrets, runs
       `systemctl --user daemon-reload` and starts them, waits for

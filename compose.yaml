@@ -1,0 +1,127 @@
+# Phyllon behind Caddy, with PostgreSQL and pgvector. It stays inside what
+# Docker Compose and podman compose both accept, and scripts/posture.sh checks
+# the hardening below on the running containers. Before the first start, copy
+# .env.example to .env and create the three password files in secrets/ (see
+# docs/install.md).
+#
+# The passwords are bind mounts under volumes:, not compose secrets:, because
+# Compose ignores uid, gid and mode for file secrets and mounts the host file
+# as it is, and rootless Podman shows the host owner as root inside, so a
+# non-root service could only read a 0600 file it owns. The files are
+# therefore mode 0444 inside a 0700 secrets/ directory, and each service mounts
+# only the ones it needs. The z option relabels a mount for SELinux, which
+# would deny it otherwise; Docker ignores it on a host without SELinux.
+# (Mika, 2026-10-30)
+
+services:
+  proxy:
+    # The default .env turns this profile on. A host with its own proxy
+    # removes proxy from COMPOSE_PROFILES.
+    profiles: [proxy]
+    image: docker.io/library/caddy:2.11.7@sha256:5e5286cb37d44086d651a5363f05f43a692ce4d649d88fb1bd844579f45fa9e8
+    # The image runs as root. Any uid works, because its data and config
+    # directories are mode 1777; this one is Caddy's own, so it shares no
+    # files with phyllon (65532).
+    user: "65533:65533"
+    read_only: true
+    tmpfs: [/config/caddy]
+    cap_drop: [ALL]
+    # The caddy binary carries the file capability cap_net_bind_service, and
+    # the kernel refuses to run such a file when the capability is missing
+    # from the bounding set. Adding it back lets the binary start. It allows
+    # only binding a port below 1024 inside the container's own network, and
+    # scripts/posture.sh accepts it on proxy alone.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    environment:
+      PHYLLON_DOMAIN: ${PHYLLON_DOMAIN:-localhost}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+    ports:
+      - ${HTTP_PORT:-80}:8080
+      - ${HTTPS_PORT:-443}:8443
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - caddy-data:/data/caddy
+    networks: [edge]
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      phyllon:
+        condition: service_healthy
+
+  phyllon:
+    image: ${PHYLLON_IMAGE:-ghcr.io/nemesis398/phyllon:0.1}
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 256
+    restart: unless-stopped
+    environment:
+      PHYLLON_CONFIG: /etc/phyllon/phyllon.toml
+    volumes:
+      - ./deploy/phyllon.toml:/etc/phyllon/phyllon.toml:ro,z
+      - ./secrets/db_runtime_password:/run/secrets/db_runtime_password:ro,z
+    networks: [edge, db]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/phyllon", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: docker.io/pgvector/pgvector:0.8.7-pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    user: "999:999"
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    pids_limit: 256
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: phyllon
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    volumes:
+      - db-data:/var/lib/postgresql
+      # Runs once, when db-data is new, and reads the other two passwords.
+      - ./deploy/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro,z
+      - ./secrets/db_superuser_password:/run/secrets/db_superuser_password:ro,z
+      - ./secrets/db_owner_password:/run/secrets/db_owner_password:ro,z
+      - ./secrets/db_runtime_password:/run/secrets/db_runtime_password:ro,z
+    networks: [db]
+    healthcheck:
+      # Over TCP, because the server initdb starts first listens only on its
+      # socket, and it must not count as ready.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "phyllon"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
+networks:
+  edge: {}
+  # No route out, and nothing outside reaches PostgreSQL.
+  db:
+    internal: true
+
+volumes:
+  db-data: {}
+  caddy-data: {}
