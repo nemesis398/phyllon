@@ -178,6 +178,107 @@ fn rejects_a_missing_required_key() {
     let error = load("missing-key", "public_url = \"https://p.example\"\n").unwrap_err();
 
     assert!(matches!(error, ConfigError::Parse(_)), "got {error:?}");
+    // The root table spans nothing, so no line is given.
+    assert_eq!(
+        error.to_string(),
+        "invalid config: missing field `database`"
+    );
+}
+
+#[test]
+fn an_empty_file_lacks_the_public_url() {
+    let text = parse_error("empty", "", "line");
+
+    assert_eq!(text, "invalid config: missing field `public_url`");
+}
+
+#[test]
+fn a_parse_error_is_a_std_error() {
+    let error = load("std-error", "x = 1\n").unwrap_err();
+    let ConfigError::Parse(inner) = error else {
+        panic!("expected ConfigError::Parse, got {error:?}");
+    };
+    let inner: &dyn std::error::Error = &inner;
+
+    assert!(inner.source().is_none());
+    assert!(
+        inner.to_string().starts_with("unknown field `x`"),
+        "{inner}"
+    );
+    // A top-level key has no dotted path but keeps its position.
+    assert!(inner.to_string().ends_with("(line 1, column 1)"), "{inner}");
+}
+
+#[test]
+fn a_parse_error_cuts_a_long_key_name() {
+    let key = format!("{}m-long-tail", "k".repeat(64));
+    let body = config_with(&format!("{key} = 1"), "https://p.example");
+    let text = parse_error("long-key", &body, "m-long-tail");
+
+    assert!(
+        text.starts_with(&format!(
+            "invalid config: unknown field `{}…`, expected",
+            "k".repeat(64)
+        )),
+        "{text}"
+    );
+
+    let exact = "k".repeat(64);
+    let body = config_with(&format!("{exact} = 1"), "https://p.example");
+    let text = load("exact-key", &body).unwrap_err().to_string();
+    assert!(text.contains(&format!("`{exact}`,")), "{text}");
+}
+
+#[test]
+fn real_syntax_errors_keep_their_description() {
+    // (body, the message after `invalid config: `)
+    let cases = [
+        (
+            "a = 1\na.b = 2\n",
+            "cannot extend value of type integer with a dotted key (line 2, column 1)",
+        ),
+        (
+            "when = 1979-05-27T07:32:00X\n",
+            "invalid offset, expected `Z`, +OFFSET, -OFFSET (line 1, column 8)",
+        ),
+        (
+            "when = 07:3\n",
+            "invalid time, expected a two-digit minute (MM) (line 1, column 8)",
+        ),
+        (
+            "= 1\n",
+            "unquoted keys cannot be empty, expected letters, numbers, `-`, `_` (line 1, column 1)",
+        ),
+        (
+            "x = 1__2\n",
+            "`_` may only go between digits, expected nothing (line 1, column 6)",
+        ),
+        (
+            "x = tru\n",
+            "invalid boolean, expected `true` (line 1, column 5)",
+        ),
+        (
+            "[[a]\n",
+            "unclosed array table, expected `]` (line 1, column 5)",
+        ),
+        // The column counts characters, not bytes: `ä` is two bytes.
+        (
+            "host = \"äöü\" x\n",
+            "unexpected key or value, expected newline, `#` (line 1, column 14)",
+        ),
+        (
+            "x = 1\r\ny = 2\r\nz = = 3\r\n",
+            "extra `=`, expected nothing (line 3, column 5)",
+        ),
+    ];
+    for (index, (body, expected)) in cases.iter().enumerate() {
+        let error = load(&format!("syntax-{index}"), body).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("invalid config: {expected}"),
+            "case {index}"
+        );
+    }
 }
 
 #[test]
@@ -296,30 +397,50 @@ fn no_parse_error_carries_text_of_the_file() {
             "m-07",
             "type: map, expected u16",
         ),
-        (database_with("host = m-08"), "m-08", "must be quoted"),
+        (
+            database_with("host = m-08"),
+            "m-08",
+            "must be quoted, expected literal string (line 8, column 8)",
+        ),
         (
             database_with("host = 'm-09"),
             "m-09",
-            "invalid literal string",
+            "invalid literal string, expected `'` (line 8, column 13)",
         ),
         (
             database_with("host = \"\"\"m-10"),
             "m-10",
-            "multi-line basic string",
+            "invalid multi-line basic string, expected `\"` (line 9, column 1)",
         ),
         (
             database_with("host = \"m-11\""),
             "m-11",
             "duplicate key (line 8, column 1)",
         ),
-        (database_with("password: m-12"), "m-12", "key with no value"),
-        (database_with("m-13"), "m-13", "key with no value"),
-        (database_with("[m-14"), "m-14", "unclosed table"),
-        (database_with("host = \"\\uZZZZ m-15\""), "m-15", "unicode"),
+        (
+            database_with("password: m-12"),
+            "m-12",
+            "no value, expected `=` (line 8, column 11)",
+        ),
+        (
+            database_with("m-13"),
+            "m-13",
+            "no value, expected `=` (line 8, column 5)",
+        ),
+        (
+            database_with("[m-14"),
+            "m-14",
+            "unclosed table, expected `]` (line 8, column 6)",
+        ),
+        (
+            database_with("host = \"\\uZZZZ m-15\""),
+            "m-15",
+            "digits, expected unicode hexadecimal value (line 8, column 11)",
+        ),
         (
             database_with("when = 1979-13-27"),
             "1979-13",
-            "invalid date",
+            "invalid date, expected month between 01 and 12 (line 8, column 8)",
         ),
         (
             config("listen = \"m-16\""),

@@ -62,11 +62,16 @@ pub enum ConfigError {
 /// The `toml` error quotes the offending line in `Display`, holds the whole
 /// file in `Debug`, and serde's messages quote the value they reject, so a
 /// password pasted into the file would reach the log. This type keeps only the
-/// line and column, the dotted key, and a message rebuilt from shapes known to
-/// hold no value: TOML syntax messages, which `toml` and `toml_parser` build
-/// from static text alone, and serde's `unknown field`, `missing field`,
-/// `invalid type` and `invalid value` with the value cut out. Any other
-/// message is withheld, so a shape this code does not know cannot leak.
+/// line and column, the dotted key, and a message that passes an allowlist: a
+/// syntax message whose description and expected items are all on the lists
+/// below, or one of serde's `unknown field`, `missing field`, `invalid type`
+/// and `invalid value` with the value cut out. Anything else becomes a fixed
+/// message, so a shape this code does not know cannot leak.
+///
+/// The syntax lists were built from `toml` 1.1.8, `toml_parser` 1.1.5 and
+/// `toml_datetime` 1.1.2. On a bump of any of them, re-read the callers of
+/// `ParseError::new` and `DatetimeParseError` and extend the lists; until
+/// then a new message shows as `invalid TOML syntax`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
     /// What went wrong, with no text of the file but key names.
@@ -81,11 +86,11 @@ pub struct ParseError {
 const WITHHELD: &str = "invalid key or value (details withheld because they could quote the file)";
 
 impl ParseError {
-    /// Wraps a TOML syntax error. Its message comes from static text in the
-    /// parser, so it is kept whole.
+    /// Wraps a TOML syntax error. Its message is kept only if it is on the
+    /// syntax lists.
     fn syntax(text: &str, error: &toml::de::Error) -> Self {
         ParseError {
-            message: error.message().to_owned(),
+            message: syntax_message(error.message()).to_owned(),
             key: None,
             position: position(text, error.span()),
         }
@@ -94,10 +99,18 @@ impl ParseError {
     /// Wraps an error from fitting the TOML to [`Config`]. Its message may
     /// quote a value, so only known shapes survive, with the value cut out.
     fn schema(text: &str, error: &toml::de::Error) -> Self {
+        let key = key_path(error);
+        // A missing top-level key points at the root table, which spans
+        // nothing, so its line 1, column 1 would mislead.
+        let at_root = key.is_none() && error.span() == Some(0..0);
         ParseError {
             message: safe_message(error.message()).unwrap_or_else(|| WITHHELD.to_owned()),
-            key: key_path(error),
-            position: position(text, error.span()),
+            key,
+            position: if at_root {
+                None
+            } else {
+                position(text, error.span())
+            },
         }
     }
 }
@@ -116,7 +129,199 @@ impl fmt::Display for ParseError {
     }
 }
 
-/// Turns the start of `span` into a 1-based line and column of `text`.
+impl std::error::Error for ParseError {}
+
+/// The message for a syntax error whose text is not on the list.
+const SYNTAX_GENERIC: &str = "invalid TOML syntax";
+
+/// Every syntax description that `toml` 1.1.8, `toml_parser` 1.1.5 and
+/// `toml_datetime` 1.1.2 can produce, read from the callers of their
+/// `ParseError::new` and `DatetimeParseError`. The other
+/// `cannot extend value of type …` messages are checked against
+/// [`TOML_TYPES`].
+const SYNTAX_DESCRIPTIONS: [&str; 69] = [
+    "`_` may only go between digits",
+    "cannot recurse further; max recursion depth met",
+    "carriage return must be followed by newline",
+    "could not allocate for string",
+    "duplicate key",
+    "extra `=`",
+    "extra assignment between key-value pairs",
+    "extra comma in array",
+    "extra comma in inline table",
+    "integers with a radix cannot be signed",
+    "invalid basic string",
+    "invalid binary number",
+    "invalid boolean",
+    "invalid comment character",
+    "invalid date",
+    "invalid date-time",
+    "invalid datetime",
+    "invalid exponent",
+    "invalid float",
+    "invalid fraction",
+    "invalid hexadecimal number",
+    "invalid inline table element",
+    "invalid integer number",
+    "invalid key",
+    "invalid key-value pair",
+    "invalid literal string",
+    "invalid mantissa",
+    "invalid multi-line basic string",
+    "invalid multi-line literal string",
+    "invalid octal number",
+    "invalid offset",
+    "invalid string",
+    "invalid table",
+    "invalid time",
+    "invalid unquoted key",
+    "invalid value",
+    "key with no value",
+    "keys cannot be multi-line basic strings",
+    "keys cannot be multi-line literal strings",
+    "missing array opening",
+    "missing assignment between key-value pairs",
+    "missing comma between array elements",
+    "missing comma between key-value pairs",
+    "missing comment start",
+    "missing escaped value",
+    "missing inline table opening",
+    "missing key for inline table element",
+    "missing opening quote",
+    "missing table open",
+    "missing value",
+    "missing value for key",
+    "radix must be lowercase",
+    "recursion limit",
+    "redundant integer number prefix",
+    "redundant numeric sign",
+    "string values must be quoted",
+    "too few unicode value digits",
+    "unclosed array",
+    "unclosed array table",
+    "unclosed inline table",
+    "unclosed table",
+    "unexpected `=` in array",
+    "unexpected content",
+    "unexpected content between comment and newline",
+    "unexpected key or value",
+    "unexpected leading zero",
+    "unexpected sign",
+    "unquoted keys cannot be empty",
+    "cannot extend value of type inline table with a dotted key",
+];
+
+/// The value types that `toml`'s `cannot extend value of type …` names.
+const TOML_TYPES: [&str; 7] = [
+    "string", "integer", "float", "boolean", "datetime", "array", "table",
+];
+
+/// Every item after `, expected ` in a syntax message: `toml_parser`'s
+/// `Expected` items as `toml` renders them, and `toml_datetime`'s
+/// expectations, whose `` `Z`, +OFFSET, -OFFSET `` is listed in three parts.
+const SYNTAX_EXPECTED: [&str; 74] = [
+    "nothing",
+    "newline",
+    "`#`",
+    "`'`",
+    "`,`",
+    "`-`",
+    "`=`",
+    "`[`",
+    "`\"`",
+    "`\\`",
+    "`]`",
+    "`]]`",
+    "`_`",
+    "`{`",
+    "`}`",
+    "`0b`",
+    "`0o`",
+    "`0x`",
+    "`b`",
+    "`e`",
+    "`f`",
+    "`n`",
+    "`r`",
+    "`u`",
+    "`U`",
+    "`x`",
+    "`true`",
+    "`false`",
+    "`inf`",
+    "`nan`",
+    "`'''`",
+    "`\"\"\"`",
+    "basic string",
+    "characters",
+    "digits",
+    "key",
+    "letters",
+    "literal string",
+    "multi-line basic string",
+    "non-double-quote visible characters",
+    "non-single-quote characters",
+    "non-single-quote visible characters",
+    "numbers",
+    "printable characters",
+    "unicode hexadecimal value",
+    "unquoted string",
+    "value",
+    "a four-digit year (YYYY)",
+    "a two-digit day (DD)",
+    "a two-digit hour (HH)",
+    "a two-digit minute (MM)",
+    "a two-digit month (MM)",
+    "a two-digit second (SS)",
+    "day",
+    "`:` (HH:MM)",
+    "hour",
+    "hour between 00 and 23",
+    "hours between 00 and 23",
+    "minute",
+    "minute between 00 and 59",
+    "minutes between 00 and 59",
+    "`-` (MM-DD)",
+    "month",
+    "month between 01 and 12",
+    "nanosecond",
+    "nanoseconds overflowed",
+    "second",
+    "second between 00 and 60",
+    "`T` between date and time",
+    "year or hour",
+    "`-` (YYYY-MM) or `:` (HH:MM)",
+    "`Z`",
+    "+OFFSET",
+    "-OFFSET",
+];
+
+/// Keeps a TOML syntax message only if its description and every item it
+/// expects are on the lists, and gives [`SYNTAX_GENERIC`] otherwise.
+fn syntax_message(message: &str) -> &str {
+    let (description, expected) = match message.split_once(", expected ") {
+        Some((description, expected)) => (description, Some(expected)),
+        None => (message, None),
+    };
+    let extends_a_type = description
+        .strip_prefix("cannot extend value of type ")
+        .and_then(|rest| rest.strip_suffix(" with a dotted key"))
+        .is_some_and(|kind| TOML_TYPES.contains(&kind));
+    let known = extends_a_type || SYNTAX_DESCRIPTIONS.contains(&description);
+    let expects_known = expected.is_none_or(|items| {
+        items
+            .split(", ")
+            .all(|item| SYNTAX_EXPECTED.contains(&item))
+    });
+    if known && expects_known {
+        message
+    } else {
+        SYNTAX_GENERIC
+    }
+}
+
+/// Turns the start of `span` into a line and column of `text`, both 1-based.
+/// The column counts characters, not bytes, as `toml` does.
 fn position(text: &str, span: Option<Range<usize>>) -> Option<(usize, usize)> {
     let before = text.get(..span?.start)?;
     let line_start = before.rfind('\n').map_or(0, |newline| newline + 1);
@@ -133,6 +338,18 @@ fn is_bare_key(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// The longest key name an error shows in full.
+const MAX_KEY_SHOWN: usize = 64;
+
+/// A bare key cut to [`MAX_KEY_SHOWN`] characters and an ellipsis, so a
+/// huge key cannot make a huge log line.
+fn shown_key(key: &str) -> String {
+    match key.get(..MAX_KEY_SHOWN) {
+        Some(head) if head.len() < key.len() => format!("{head}…"),
+        _ => key.to_owned(),
+    }
+}
+
 /// The dotted key of a serde error. `toml` exposes it only in `Display`, which
 /// without the file's text is the message, then `in `, the key in backticks.
 fn key_path(error: &toml::de::Error) -> Option<String> {
@@ -141,7 +358,7 @@ fn key_path(error: &toml::de::Error) -> Option<String> {
         .strip_prefix(error.message())?
         .strip_prefix("\nin `")?
         .strip_suffix("`\n")?;
-    key.split('.').all(is_bare_key).then(|| key.to_owned())
+    key.split('.').all(is_bare_key).then(|| shown_key(key))
 }
 
 /// Rebuilds a serde message from the shapes that serde produces for
@@ -153,7 +370,8 @@ fn safe_message(message: &str) -> Option<String> {
         let (name, expected) = rest.split_once('`')?;
         let one_list =
             expected.starts_with(", expected ") && expected.matches(", expected ").count() == 1;
-        return (is_bare_key(name) && one_list).then(|| message.to_owned());
+        return (is_bare_key(name) && one_list)
+            .then(|| format!("unknown field `{}`{expected}", shown_key(name)));
     }
     if let Some(name) = message
         .strip_prefix("missing field `")
@@ -320,4 +538,40 @@ fn default_listen() -> SocketAddr {
 
 fn default_database_port() -> u16 {
     5432
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_syntax_message_off_the_list_is_replaced() {
+        for message in [
+            "invalid basic string m-secret",
+            "m-secret, expected `=`",
+            "invalid basic string, expected m-secret",
+            "invalid basic string, expected `\"`, m-secret",
+            "invalid basic string, expected ",
+            "cannot extend value of type m-secret with a dotted key",
+            "cannot extend value of type table with a dotted key m-secret",
+            "invalid m-secret, expected hour",
+            "",
+        ] {
+            assert_eq!(syntax_message(message), SYNTAX_GENERIC, "{message:?}");
+        }
+    }
+
+    #[test]
+    fn a_syntax_message_on_the_list_is_kept() {
+        for message in [
+            "duplicate key",
+            "invalid basic string, expected `\"`",
+            "missing escaped value, expected `b`, `e`, `f`, `n`, `r`, `\\`, `\"`, `x`, `u`, `U`",
+            "cannot extend value of type inline table with a dotted key",
+            "invalid datetime",
+            "extra `=`, expected nothing",
+        ] {
+            assert_eq!(syntax_message(message), message);
+        }
+    }
 }
