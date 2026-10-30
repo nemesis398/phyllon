@@ -2,12 +2,15 @@
 
 use std::time::Duration;
 
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{Connection, PgPool};
 use tokio::time::timeout;
 use tracing::warn;
 
 use crate::config::{DatabaseConfig, Secret};
+
+/// The application name the server shows for our connections.
+const APPLICATION_NAME: &str = "phyllon";
 
 /// How long a request may wait for a connection from the pool.
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -22,19 +25,35 @@ const READY_TIMEOUT: Duration = Duration::from_secs(2);
 /// reports it instead. A request that waits more than two seconds for a
 /// connection gets an error, so a hung database cannot pile up requests.
 ///
+/// The config is the only source of the connection settings. The options start
+/// from [`PgConnectOptions::new_without_pgpass`], which skips `~/.pgpass`, and
+/// every setting that sqlx would otherwise read from a `PG*` environment
+/// variable is set here: host, port, user, database, password, TLS mode and
+/// application name. The exceptions are `PGOPTIONS`, the TLS certificate
+/// paths and the extra float digits: sqlx 0.9.0 offers no way to clear
+/// `PGOPTIONS`, which only adds session parameters, and the certificate paths
+/// do nothing with TLS off.
+///
 /// The password reaches sqlx only through the connect options, which are not
 /// logged.
 ///
-/// Call it from inside a Tokio runtime: the pool starts its upkeep task on
-/// the current runtime.
+/// # Panics
+///
+/// Panics when called outside a Tokio runtime, because the pool starts its
+/// upkeep task on the current runtime.
 #[must_use]
 pub fn pool(cfg: &DatabaseConfig, password: &Secret) -> PgPool {
-    let options = PgConnectOptions::new()
+    // TLS is not compiled in (sqlx has no TLS feature), so the mode is
+    // Disable. The default, Prefer, would also work, but a stray PGSSLMODE
+    // of require or verify-full would make every connection fail.
+    let options = PgConnectOptions::new_without_pgpass()
         .host(&cfg.host)
         .port(cfg.port)
         .database(&cfg.name)
         .username(&cfg.user)
-        .password(password.expose());
+        .password(password.expose())
+        .ssl_mode(PgSslMode::Disable)
+        .application_name(APPLICATION_NAME);
     PgPoolOptions::new()
         .acquire_timeout(ACQUIRE_TIMEOUT)
         .connect_lazy_with(options)

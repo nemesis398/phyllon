@@ -16,6 +16,7 @@ use phyllon::config::DatabaseConfig;
 use phyllon::db;
 use phyllon::http::headers::SECURITY_HEADERS;
 use phyllon::http::{AppState, BuildInfo, router, source_url, with_security_layers};
+use sqlx::postgres::PgSslMode;
 use tower::ServiceExt;
 
 /// The helpers sit in a `cfg(test)` module so that Clippy's
@@ -162,6 +163,27 @@ async fn the_ready_check_fails_when_the_database_is_unreachable() {
     let state = unreachable_state("ready_unreachable");
 
     assert!(!db::ready(&state.pool).await);
+}
+
+#[tokio::test]
+async fn the_pool_takes_its_connection_options_from_the_config_alone() {
+    // sqlx reads PGSSLMODE, PGAPPNAME and others from the process environment
+    // unless the pool sets them, so each must be pinned. Reading them back
+    // shows that the pool sets them, whatever the environment holds.
+    let state = state_for("pool_options", "db.example", 6543, "unused");
+
+    let options = state.pool.connect_options();
+
+    assert_eq!(options.get_host(), "db.example");
+    assert_eq!(options.get_port(), 6543);
+    assert_eq!(options.get_username(), "postgres");
+    assert_eq!(options.get_database(), Some("phyllon"));
+    assert!(
+        matches!(options.get_ssl_mode(), PgSslMode::Disable),
+        "ssl mode was {:?}",
+        options.get_ssl_mode()
+    );
+    assert_eq!(options.get_application_name(), Some("phyllon"));
 }
 
 #[tokio::test]
