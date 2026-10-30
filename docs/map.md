@@ -45,8 +45,8 @@ uses.
   clear it.
 - A failure prints `phyllon: <reason>` on stderr and exits 1, and a usage error
   exits 2. The error for a secret file names its key and path, never its
-  content. A parse error of the config file quotes the offending line, so keep
-  secrets out of that file (see `config`).
+  content, and a parse error of the config file quotes no text of the file but
+  key names (see `config`).
 - The database password is read into a `Secret` once, by `serve`, and handed
   only to `db::pool`. The log lines `serve` writes, at level INFO, hold the
   version, the commit and the listen address, or say that the server is
@@ -66,17 +66,22 @@ explains why `main.rs` is five lines that call `cli::run`.
 Source: [`src/config.rs`](../src/config.rs)
 
 **Owns.** The TOML configuration file, its validation, and the secrets it points
-to. Types: `Config`, `DatabaseConfig`, `Secret` and `ConfigError`.
+to. Types: `Config`, `DatabaseConfig`, `Secret`, `ConfigError` and `ParseError`.
 
 **Invariants.**
 
 - The config file must hold no secret. A secret lives in its own file, which a
   `*_file` key names (`database.password_file`), and `Config::load` does not
   read it. `DatabaseConfig::password` reads it, strips one trailing line ending
-  and nothing else, and returns a `Secret`. Nothing enforces the rule on the
-  file itself: a parse error quotes the offending line, and `serve` prints it to
-  stderr, so a secret pasted into the file, such as a `password` key that
-  `deny_unknown_fields` rejects, would reach the log.
+  and nothing else, and returns a `Secret`.
+- In `Display` and `Debug`, a `ConfigError::Parse` holds the kind of error, the
+  keys involved and a line and column, but no other text of the config file. So
+  a secret pasted into the file, such as a `password` key that
+  `deny_unknown_fields` rejects, does not reach the log through the error.
+  Syntax and serde messages pass an allowlist that cuts serde's values out. Any
+  other message becomes a fixed one. The syntax list comes from toml 1.1.8 and
+  its parser crates, and a bump of them must extend it. Key names are cut to 64
+  characters.
 - A `Secret` cannot leak through `Debug`: `{:?}` and `{:#?}` print
   `Secret([redacted])`. Its text comes out only through `Secret::expose`, whose
   one caller is `db::pool`.
