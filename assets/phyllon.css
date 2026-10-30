@@ -97,6 +97,8 @@ a:focus-visible {
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
+  /* The brand's lockup sets the name in lowercase; the text stays "Phyllon". */
+  text-transform: lowercase;
 }
 
 main {
