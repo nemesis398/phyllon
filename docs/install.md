@@ -74,10 +74,10 @@ needs no root even under rootless Podman.
 
 4. Get the image. The first start in the next step pulls
    `ghcr.io/nemesis398/phyllon:0.1` on its own but checks nothing. To check it
-   first, run the script in [Pull a verified image](#pull-a-verified-image) with
-   `0.1.0`, and the next step uses the image without pulling again. To run your
-   own changes instead, build the image yourself (see
-   [Build the image yourself](#build-the-image-yourself)).
+   first, run the script in [Pull a verified image](#pull-a-verified-image) as
+   `ENGINE=docker bash verify-image.sh 0.1.0`, and the next step uses the image
+   without pulling again. To run your own changes instead, build the image
+   yourself (see [Build the image yourself](#build-the-image-yourself)).
 
 5. Start the stack and wait until every service is healthy.
 
@@ -428,6 +428,7 @@ want. `gh release list -R nemesis398/phyllon` lists them. Say
 #!/usr/bin/env bash
 set -euo pipefail
 version=${1:?usage: verify-image.sh X.Y.Z}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a version: $version" >&2; exit 2; }
 engine=${ENGINE:-podman}
 repo=nemesis398/phyllon
 signer=$repo/.github/workflows/build.yml
@@ -440,7 +441,8 @@ gh attestation verify "$dir/compose.yaml" -R "$repo" --signer-workflow "$signer"
   --source-ref refs/heads/main --deny-self-hosted-runners
 digest=$(sed -n "s|^ *image: $image:$version@\(sha256:[0-9a-f]\{64\}\)\$|\1|p" \
   "$dir/compose.yaml")
-[ -n "$digest" ] || { echo "no digest for $version in compose.yaml" >&2; exit 1; }
+[[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] ||
+  { echo "not exactly one digest for $version in compose.yaml" >&2; exit 1; }
 
 cosign verify "$image@$digest" \
   --certificate-identity "https://github.com/$signer@refs/heads/main" \
