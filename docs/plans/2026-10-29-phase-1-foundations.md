@@ -1073,34 +1073,36 @@ Done: merged in 8f9e0cc (#28) on 2026-10-30.
 
 - Create: `docs/decisions/0006-release-pipeline.md`
 
-- [ ] **Step 1: Set up a throwaway repository.** After Mika agrees in the
+- [x] **Step 1: Set up a throwaway repository.** After Mika agrees in the
       question dialog, create the public repository
       `nemesis398/phyllon-release-spike` with a minimal crate,
       `release-plz.toml` (`git_only = true`, `git_release_draft = true`,
       `git_release_type = "pre"`, `release_always = false`) and immutable
       releases on.
-- [ ] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
+- [x] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
       its generated workflow attach to the draft that release-plz created, then
       publish only after verification. Its build and attest steps have to run
       inside a reusable workflow (`on: workflow_call`) that the release workflow
       calls, for SLSA Build Level 3. Note every edit the generated workflow
       needed.
-- [ ] **Step 3: Try our own build job:** a reusable workflow in which two native
+- [x] **Step 3: Try our own build job:** a reusable workflow in which two native
       runners build the static binaries and attest them; the calling workflow
       uploads them to the draft, verifies them with `--signer-workflow` and
       publishes. Its build job runs with `step-security/harden-runner` in block
       mode (Mika, 2026-10-30), so the spike learns the allowlist: the audit
       output of a first run gives the hosts, and Task 20 takes the list from
       here.
-- [ ] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
+- [x] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
       and check that `release_always = false` releases a merge from that branch
       and ignores an ordinary merge.
-- [ ] **Step 5: Decide and record.** dist stays if it fits the
+- [x] **Step 5: Decide and record.** dist stays if it fits the
       draft-then-publish order and builds inside the reusable workflow with its
       generated workflow intact; otherwise the own job. Check with
       `gh attestation verify --signer-workflow` that each variant's attestation
       names the reusable workflow as its signer, not the caller. Write 0006 with
       what each needed. Then, after Mika agrees, delete the spike repository.
+
+Done: merged in c1d8ee4 (#30) on 2026-10-31.
 
 ### Task 20: The release workflow
 
