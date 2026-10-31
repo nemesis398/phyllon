@@ -97,12 +97,16 @@ needs no root even under rootless Podman.
 
    `/healthz` answers `ok` while Phyllon runs. `/readyz` answers `ok` once
    Phyllon can reach the database, and `503` with `database unavailable` if it
-   cannot. Every other path, `/` included, answers 404 until the web interface
-   arrives in a later release.
+   cannot.
+
+   Then open <https://localhost:8443/> in a browser. It first warns about the
+   certificate (see below); accept the warning for this address. The start page
+   shows Phyllon's logo and name and says there is nothing to sign in to yet.
+   Any other path shows Phyllon's 404 page.
 
 For `localhost`, Caddy cannot get a certificate from a public authority, so it
 signs one with its own internal authority, and no browser or `curl` trusts that.
-That is why `curl` needs `-k` above, and why a browser would warn you. A real
+That is why `curl` needs `-k` above, and why the browser warns you. A real
 domain, below, gets a trusted certificate on its own.
 
 To stop the stack and keep its data, run `docker compose down`.
@@ -175,8 +179,8 @@ these before the first start:
    sudo sysctl --system
    ```
 
-Then do steps 2 to 5 of the quickstart: the password files, their check, the
-image build and the start. Step 6 then checks the domain instead of `localhost`.
+Then do steps 2 to 5 of the quickstart: the password files, their check, getting
+the image and the start. Step 6 then checks the domain instead of `localhost`.
 
 ## Quadlet on Fedora
 
@@ -513,15 +517,7 @@ To move to a new line, add a drop-in
 and restart the unit. Caddy and PostgreSQL are pinned by digest in both paths.
 They change only when you update the checkout or the units.
 
-## What phase 1 cannot do yet
-
-- **There is nothing to use.** Phyllon answers `/healthz` and `/readyz` and
-  nothing else yet: every other path, `/` included, gives a 404 until the web
-  interface arrives in a later release. It has no sign-in and no learning tasks,
-  and PostgreSQL holds no tables yet. Learning tasks come in later phases (see
-  the [roadmap](roadmap.md)).
-
-### Build the image yourself
+## Build the image yourself
 
 The released image needs no build. Build it yourself to run changes you made to
 the code, or `main` ahead of a release. From the checkout, build the image under
@@ -541,3 +537,11 @@ To give the image another name, build it under that name and set `PHYLLON_IMAGE`
 in `.env` to it. The Quadlet unit has no variable: set `Image=` in a drop-in, or
 build under the shipped name. A local image is used as it is, so nothing is
 pulled from `ghcr.io`.
+
+## What phase 1 cannot do yet
+
+- **There is nothing to use.** Phyllon serves its shell: the start page at `/`
+  shows the brand and says there is nothing to sign in to, and `/healthz` and
+  `/readyz` report its state. It has no sign-in and no learning tasks, and
+  PostgreSQL holds no tables yet. Learning tasks come in later phases (see the
+  [roadmap](roadmap.md)).
