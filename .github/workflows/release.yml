@@ -305,8 +305,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       # The version, such as 0.1.0, and the minor line, such as 0.1, go only on
-      # a verified image, because compose pull and podman auto-update follow
-      # them. A single source keeps its digest, which the check confirms.
+      # a verified image, because people and compose files pull what they name.
+      # A single source keeps its digest, which the check confirms.
       - name: Tag the verified image
         run: |
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ && "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
