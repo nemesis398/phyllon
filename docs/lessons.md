@@ -31,8 +31,7 @@ Each entry has a title and three fields:
   `/` is the start page, but no check compares the guide with what the server
   answers. When a change alters what a route answers, its plan task must list
   `docs/install.md`, and the review must read the guide.
-- **Pull request:** the one titled
-  `docs: say what v0.1.0 serves and record the phase 1 lessons`.
+- **Pull request:** [#37](https://github.com/nemesis398/phyllon/pull/37).
 
 ### Config parse errors quoted the config file
 
