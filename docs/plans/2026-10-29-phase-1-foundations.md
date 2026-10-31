@@ -1180,14 +1180,14 @@ Done: merged in 02c1af7 (#31) on 2026-10-31.
   ("Verifying a release"), `.github/workflows/nightly.yml`, `README.md`,
   `docs/decisions/0007-podman-signature-policy.md` (only if Step 5 fails)
 
-- [ ] **Step 1: Prepare it.** Run `scripts/prepare-release.sh 0.1.0`, push after
+- [x] **Step 1: Prepare it.** Run `scripts/prepare-release.sh 0.1.0`, push after
       the key dialog, open the pull request. Expected: CI green.
-- [ ] **Step 2: Merge it after Mika's yes.** Expected: `release.yml` runs to
+- [x] **Step 2: Merge it after Mika's yes.** Expected: `release.yml` runs to
       `publish`; the release `v0.1.0` exists as a pre-release with both
       binaries, their SBOMs and `compose.yaml`.
-- [ ] **Step 3: Mika makes the GHCR package public** in its package settings,
+- [x] **Step 3: Mika makes the GHCR package public** in its package settings,
       since a new package starts private and the API cannot change that.
-- [ ] **Step 4: Verify from outside.** On a machine that did not build it, run
+- [x] **Step 4: Verify from outside.** On a machine that did not build it, run
       these two and the `cosign verify` command from Task 20. Expected: all
       three succeed, and the attestation's predicate names `build.yml` as the
       build workflow.
@@ -1200,16 +1200,16 @@ Done: merged in 02c1af7 (#31) on 2026-10-31.
     -R nemesis398/phyllon --signer-workflow "$signer"
   ```
 
-- [ ] **Step 5: Spike the Podman signature policy.** Write a `policy.json` that
+- [x] **Step 5: Spike the Podman signature policy.** Write a `policy.json` that
       requires a `sigstoreSigned` keyless signature from the build workflow's
       identity for `ghcr.io/nemesis398/phyllon`, and pull `0.1` with it under
       rootless Podman. Expected: the pull succeeds, and a pull of an unsigned
       image under the same name prefix is refused. If Podman cannot match a
       workflow identity, write 0007 with the fallback (verify with cosign before
       an update, and no `AutoUpdate=` in the Quadlet unit).
-- [ ] **Step 6: Write "Verifying a release"** in the install guide with the
+- [x] **Step 6: Write "Verifying a release"** in the install guide with the
       commands from Steps 4 and 5.
-- [ ] **Step 7: Scan the published image every night** (Mika, 2026-10-30). This
+- [x] **Step 7: Scan the published image every night** (Mika, 2026-10-30). This
       needs the public package from Step 3, since a scan cannot pull a private
       image. Add a job to `nightly.yml` with `contents: read` and
       `security-events: write`: a pinned `anchore/scan-action` (Grype) on
@@ -1220,35 +1220,37 @@ Done: merged in 02c1af7 (#31) on 2026-10-31.
       and move the tag when the minor line moves. Expected: a manual run from
       the pull request's branch is green, the log lists the binary's Rust
       crates, and the SARIF shows in code scanning.
-- [ ] **Step 8: Add the release badge to the README** (Mika, 2026-10-30), now
+- [x] **Step 8: Add the release badge to the README** (Mika, 2026-10-30), now
       that a release exists: the image
       `https://img.shields.io/github/v/release/nemesis398/phyllon?include_prereleases&sort=semver`,
       linking to `https://github.com/nemesis398/phyllon/releases`. Expected: the
       badge shows `v0.1.0`.
-- [ ] **Step 9: Ship** the guide, `nightly.yml` and the README badge in one pull
+- [x] **Step 9: Ship** the guide, `nightly.yml` and the README badge in one pull
       request. Title:
       `ci: scan the published image and explain how to verify a release`.
+
+Done: released v0.1.0 in 8bd003f (#32) and merged in c8e768b (#33) on 2026-10-31.
 
 ## Part 9: Acceptance
 
 ### Task 22: Show each line of "When phase 1 is done"
 
-- [ ] **Step 1: The repository files.**
+- [x] **Step 1: The repository files.**
       `gh api repos/nemesis398/phyllon/community/profile --jq .health_percentage`
       prints `100`; a fresh clone at `v0.1.0` that follows `docs/install.md`
       reaches a running stack on `localhost`.
-- [ ] **Step 2: The stack.** The latest `stack-docker` run and the latest Podman
+- [x] **Step 2: The stack.** The latest `stack-docker` run and the latest Podman
       run are green, each ending with the posture script's output.
-- [ ] **Step 3: The gate bites.** A throwaway pull request that adds an
+- [x] **Step 3: The gate bites.** A throwaway pull request that adds an
       `unwrap()` turns `gate` red; close it unmerged. `.githooks/pre-commit` and
       the Stop hook refuse the same change locally.
-- [ ] **Step 4: The map and skill checks bite.** One throwaway pull request with
+- [x] **Step 4: The map and skill checks bite.** One throwaway pull request with
       a module missing from the map and one with a dangling skill link both turn
       `scripts` red; close both unmerged.
-- [ ] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job
+- [x] **Step 5: The release.** Link the `v0.1.0` release, its `verify` job
       (which shows the `--signer-workflow` check, the SLSA Build Level 3
       evidence) and records 0006 and, if written, 0007.
-- [ ] **Step 6: The shell.** Link the `browser` run and its two screenshots.
+- [x] **Step 6: The shell.** Link the `browser` run and its two screenshots.
 - [x] **Step 7: The best practices badge** (Mika, 2026-10-30). Stop and ask in
       the question dialog: only Mika can do this. Mika registers the project at
       <https://www.bestpractices.dev> and fills in the passing-level form. Then
@@ -1256,7 +1258,7 @@ Done: merged in 02c1af7 (#31) on 2026-10-31.
       the ID from the registration, to the README, linking to the project page.
       Scorecard reads the registration; the badge only shows it. Title:
       `docs: show the best practices badge in the README`.
-- [ ] **Step 8: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
+- [x] **Step 8: Loose ends.** `scripts/github-settings.sh audit` exits 0; the
       latest Scorecard run shows Pinned-Dependencies, Token-Permissions and
       Dangerous-Workflow at 10 and CII-Best-Practices above 0;
       `curl -sI https://phyllon.de` redirects to the repository. GitHub's
