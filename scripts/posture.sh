@@ -20,6 +20,8 @@
 # it dropped and lists what is left in BoundingCaps, so a container that has
 # BoundingCaps is judged by that list. Podman's docker command answers in
 # Podman's format, which is why the format, not ENGINE, decides.
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
 set -euo pipefail
 
