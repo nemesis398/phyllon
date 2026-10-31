@@ -1125,12 +1125,12 @@ Done: merged in c1d8ee4 (#30) on 2026-10-31.
   sign-off, and stops before the push, which the main session does after the key
   dialog.
 
-- [ ] **Step 1: Write `release-plz.toml`** with the four settings from Task 19
+- [x] **Step 1: Write `release-plz.toml`** with the four settings from Task 19
       and `publish = false`.
-- [ ] **Step 2: Write `prepare-release.sh`** and run it with `--dry-run` on a
+- [x] **Step 2: Write `prepare-release.sh`** and run it with `--dry-run` on a
       scratch clone. Expected: the branch, the version in `Cargo.toml` and the
       changelog entry, no push.
-- [ ] **Step 3: Write `build.yml`** (`on: workflow_call`, with the version as
+- [x] **Step 3: Write `build.yml`** (`on: workflow_call`, with the version as
       input and the binaries' names and the image digest as outputs), as 0006
       decided. It does everything that produces or signs an artifact: binaries
       for `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
@@ -1148,7 +1148,7 @@ Done: merged in c1d8ee4 (#30) on 2026-10-31.
       crates.io, static.crates.io, index.crates.io, static.rust-lang.org,
       github.com, api.github.com, ghcr.io and its blob hosts, Sigstore's fulcio,
       rekor and tuf hosts, and the base image registries (Mika, 2026-10-30).
-- [ ] **Step 4: Write `release.yml`,** with a `concurrency` group and per-job
+- [x] **Step 4: Write `release.yml`,** with a `concurrency` group and per-job
       permissions, and the same Harden-Runner first step in every job that has
       steps, each job with only the endpoints it needs. Jobs: `release-plz` (tag
       and draft; outputs whether a release was created and its tag); `build`,
@@ -1163,12 +1163,14 @@ Done: merged in c1d8ee4 (#30) on 2026-10-31.
       `--certificate-oidc-issuer https://token.actions.githubusercontent.com`;
       `publish`, which runs only when `verify` passed and turns the draft into a
       published pre-release.
-- [ ] **Step 5: Lint them.** Run `actionlint` and `zizmor` on both workflows.
+- [x] **Step 5: Lint them.** Run `actionlint` and `zizmor` on both workflows.
       Expected: no findings.
-- [ ] **Step 6: Ship.** Title:
+- [x] **Step 6: Ship.** Title:
       `ci: build, attest, sign and verify releases before publishing`. A merge
       of this pull request releases nothing, because `Cargo.toml` still says
       `0.0.0` and the branch is not a release branch.
+
+Done: merged in 02c1af7 (#31) on 2026-10-31.
 
 ### Task 21: The first release, `v0.1.0`
 
