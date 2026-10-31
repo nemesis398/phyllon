@@ -67,10 +67,10 @@ that builds static binaries for `x86_64-unknown-linux-musl` and
 
   | Check                                                | Result      | Harden-Runner log                  |
   | ---------------------------------------------------- | ----------- | ---------------------------------- |
-  | `github.com`, listed                                 | got through | none                               |
+  | `github.com`, listed                                 | got through | `endpoint called`                  |
   | `example.com` by name                                | blocked     | `domain not allowed: example.com.` |
   | `example.com` by IP, `--resolve` with both addresses | blocked     | `ip address dropped: <address>`    |
-  | `https://1.1.1.1`                                    | blocked     | `endpoint called`, no reason given |
+  | `https://1.1.1.1`                                    | blocked     | `ip address dropped: 1.1.1.1`      |
   | `gist.github.com`, unlisted                          | got through | `endpoint called`                  |
   | `ghcr.io/v2/`, unlisted                              | got through | `endpoint called`                  |
   | `objects.githubusercontent.com`, unlisted            | blocked     | `domain not allowed: objects...`   |
@@ -277,15 +277,16 @@ Use option 3. Task 20 writes `build.yml` and `release.yml` as follows:
   binary, an SBOM and an image, so none of them is missed. If shell or Homebrew
   installers are wanted later, revisit dist with a new record.
 - **Block mode falls short of the design.** The design says Harden-Runner "lets
-  the job reach only the hosts it needs". Measured, it blocks every unlisted
-  host by name and by IP, except GitHub's meta domains: `gist.github.com` and
-  `ghcr.io` got through unlisted, and the agent treats all of `github.com`,
-  `*.github.com`, `*.githubapp.com`, `ghcr.io` and the `productionresultssa*`
-  blob hosts the same way. A compromised step in a release job can therefore
-  still reach any GitHub host, a gist or a GHCR package among them, with
-  whatever token it holds. Least `permissions` and short-lived tokens limit what
-  it can write there; Harden-Runner does not. The design's wording needs an
-  amendment, which the maintainer decides separately.
+  the job reach only the hosts it needs". Measured in a top-level job on x64 and
+  arm64, it blocked every unlisted host it was given, by name and by IP, except
+  GitHub's meta domains: `gist.github.com` and `ghcr.io` got through unlisted.
+  The agent's log names `github.com`, `*.github.com`, `*.githubapp.com`,
+  `ghcr.io` and the `productionresultssa*` blob hosts as meta domains, so the
+  rest is inferred to pass the same way. A compromised step in a release job can
+  therefore still reach a gist or a GHCR package, with whatever token it holds.
+  Least `permissions` and short-lived tokens limit what it can write there;
+  Harden-Runner does not. The maintainer amended the design's wording to say so
+  (Mika, 2026-10-31).
 - The allowlists are a second list to keep current. A new tool or action in a
   release job takes one audit run and an update to its list. Without that
   update, the job fails on any host outside GitHub's meta domains; a new GitHub
