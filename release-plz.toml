@@ -1,0 +1,12 @@
+# release-plz reads this when scripts/prepare-release.sh prepares a release
+# and when release.yml tags it. publish = false stays in Cargo.toml (0006).
+[workspace]
+# Versions live in git tags; nothing goes to crates.io.
+git_only = true
+# The release starts as a draft, so the later jobs can attach the files before
+# it is published: an immutable release takes no new assets.
+git_release_draft = true
+# Every release before 1.0 is a GitHub pre-release.
+git_release_type = "pre"
+# Release only a merge of a release-plz-* branch, never an ordinary merge.
+release_always = false

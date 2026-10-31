@@ -1,0 +1,325 @@
+# Releases a version once its release pull request, which
+# scripts/prepare-release.sh prepares, is squash-merged to main. On every
+# other push to main, release-plz finds nothing to release and the later jobs
+# are skipped (release_always = false in release-plz.toml).
+#
+# release-plz tags the commit and creates a draft release. build.yml, a
+# reusable workflow, builds, attests and signs. attach puts the files on the
+# draft; verify checks every file and the image against build.yml as the
+# signer; publish tags the image with the version and the minor line and
+# publishes the draft as a pre-release. The draft exists because an immutable
+# release takes no new assets once published, and a failed, skipped or canceled
+# verify leaves the release a draft (docs/decisions/0006-release-pipeline.md).
+#
+# Every job with steps starts with Harden-Runner in block mode, with the hosts
+# its audit run reached. GitHub's own domains pass whatever the list says
+# (0006).
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# One release at a time, and a running release is never canceled halfway.
+# GitHub keeps only one run waiting per group: a later push to main cancels a
+# run that is still waiting. If that run was a release merge, nothing was
+# tagged yet; re-run it from the Actions tab once main is quiet.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# With shell: bash, a run: step also fails when a command inside a pipe fails.
+defaults:
+  run:
+    shell: bash
+
+# The identity every release file must carry. Written out, not taken from the
+# run, so verify checks against fixed values.
+env:
+  BIN: phyllon
+  IMAGE: ghcr.io/nemesis398/phyllon
+  SIGNER: nemesis398/phyllon/.github/workflows/build.yml
+  CALLER: nemesis398/phyllon/.github/workflows/release.yml
+  # gh sends usage telemetry to cafe.github.com, which passes Harden-Runner
+  # as a GitHub meta domain; nothing of a release run should leave for it.
+  GH_TELEMETRY: "false"
+
+jobs:
+  release-plz:
+    name: release-plz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # The tag and the draft release, both through the API.
+      contents: write
+      # release_always = false looks up the pull request behind the commit.
+      pull-requests: read
+    outputs:
+      released: ${{ steps.out.outputs.released }}
+      tag: ${{ steps.out.outputs.tag }}
+      version: ${{ steps.out.outputs.version }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          # Nothing here needs sudo or a container.
+          disable-sudo-and-containers: true
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443 api.github.com:443
+            release-assets.githubusercontent.com:443 static.rust-lang.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: rustup toolchain install --no-self-update
+      # Only the squash merge of a release pull request releases: its subject
+      # is "chore(release): v<version> (#N)", with the version Cargo.toml now
+      # holds. release-plz checks the pull request's branch name on top.
+      - id: gate
+        run: |
+          subject=$(git log -1 --format=%s)
+          version=$(cargo metadata --no-deps --format-version 1 --offline |
+            jq -r --arg bin "$BIN" '.packages[] | select(.name == $bin) | .version')
+          if [[ "$subject" =~ ^chore\(release\):\ (v[0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ &&
+            "${BASH_REMATCH[1]}" == "v$version" ]]; then
+            echo "version=$version" >>"$GITHUB_OUTPUT"
+          else
+            echo "not a release merge: '$subject'"
+          fi
+      # release-plz from install-action's manifest, which checks the release
+      # asset's SHA-256, not through cargo-binstall as release-plz/action does.
+      - if: steps.gate.outputs.version != ''
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          tool: release-plz@0.4.0
+          fallback: none
+      - id: release-plz
+        if: steps.gate.outputs.version != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          output=$(release-plz release --git-token "$GITHUB_TOKEN" --forge github -o json)
+          echo "release-plz: $output"
+          echo "releases=$(jq -c .releases <<<"$output")" >>"$GITHUB_OUTPUT"
+      # The tag reaches later run: steps only through the environment, and
+      # only in the form v1.2.3.
+      - id: out
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+          EXPECTED: ${{ steps.gate.outputs.version }}
+        run: |
+          tag=$(jq -r '.[0].tag // empty' <<<"${RELEASES:-[]}")
+          version=$(jq -r '.[0].version // empty' <<<"${RELEASES:-[]}")
+          if [ -z "$tag" ]; then
+            echo "released=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$tag" == "v$version" &&
+            "$version" == "$EXPECTED" ]]; then
+            echo "unexpected tag '$tag' for version '$version'" >&2
+            exit 1
+          fi
+          {
+            echo "released=true"
+            echo "tag=$tag"
+            echo "version=$version"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    name: build
+    needs: release-plz
+    if: needs.release-plz.outputs.released == 'true'
+    # A called workflow gets no more than its calling job holds, so this is
+    # the union of build.yml's jobs.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: write
+    # actionlint 1.7.12 rejects the "$/" self-repository form that zizmor
+    # 1.31.1 asks for, so the call keeps the "./" form (0006).
+    uses: ./.github/workflows/build.yml # zizmor: ignore[self-repository]
+    with:
+      tag: ${{ needs.release-plz.outputs.tag }}
+      version: ${{ needs.release-plz.outputs.version }}
+
+  attach:
+    name: attach
+    needs: [release-plz, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          disable-sudo-and-containers: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443 uploads.github.com:443
+            results-receiver.actions.githubusercontent.com:443
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: binary-*
+          path: assets
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: compose
+          path: assets
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-plz.outputs.tag }}
+        run: |
+          ls -l assets
+          gh release upload "$TAG" assets/* --repo "$GITHUB_REPOSITORY"
+
+  verify:
+    name: verify
+    needs: [release-plz, build, attach]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # A draft is visible only to a token that can write.
+      contents: write
+      attestations: read
+      # The image and its signature on GHCR, while the package is private.
+      packages: read
+    # GH_TOKEN goes only to the steps that run gh.
+    env:
+      TAG: ${{ needs.release-plz.outputs.tag }}
+      VERSION: ${{ needs.release-plz.outputs.version }}
+      DIGEST: ${{ needs.build.outputs.image-digest }}
+      BINARIES: ${{ needs.build.outputs.binaries }}
+    steps:
+      # As in build.yml's manifest job for cosign; gh attestation verify reads
+      # the bundles from tmaproduction and its trusted roots through TUF.
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443 api.github.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443 ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+            tmaproduction.blob.core.windows.net:443
+            tuf-repo-cdn.sigstore.dev:443 tuf-repo.github.com:443
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - name: Check the draft and its files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$TAG" == "v$VERSION" ]]
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,tagName --jq '"\(.isDraft) \(.tagName)"')" = "true $TAG"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets
+          ls -l assets
+          # Exactly the files build.yml made: each binary, its SBOM and
+          # compose.yaml.
+          expected=(compose.yaml)
+          for name in $BINARIES; do
+            [[ "$name" =~ ^[a-z0-9_-]+-unknown-linux-musl$ && "$name" == "$BIN-"* ]]
+            expected+=("$name" "$name.cdx.json")
+          done
+          test "${#expected[@]}" -eq 5
+          diff <(printf '%s\n' "${expected[@]}" | sort) <(find assets -type f -printf '%f\n' | sort)
+          # compose.yaml pins the image that is verified below.
+          test "$(grep -cxF "    image: $IMAGE:$VERSION@$DIGEST" assets/compose.yaml)" -eq 1
+      # Each signature must come from build.yml, on main, at this commit.
+      - name: Verify the files against build.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for file in assets/*; do
+            echo "::group::$file"
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$SIGNER" --source-ref refs/heads/main \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners --format json |
+              jq '.[] | .verificationResult.signature.certificate | {buildSignerURI, buildConfigURI, sourceRepositoryRef, runInvocationURI}'
+            # The caller must not pass as the signer.
+            if gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$CALLER" >/dev/null 2>&1; then
+              echo "release.yml passed as the signer of $file" >&2
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+      # By digest, because the version tag goes on only in publish.
+      - name: Verify the image against build.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$SIGNER" --source-ref refs/heads/main \
+            --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners --format json |
+            jq '.[] | .verificationResult.signature.certificate | {buildSignerURI, buildConfigURI, sourceRepositoryRef, runInvocationURI}'
+          if gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$CALLER" >/dev/null 2>&1; then
+            echo "release.yml passed as the signer of the image" >&2
+            exit 1
+          fi
+          cosign verify "$IMAGE@$DIGEST" \
+            --certificate-identity "https://github.com/$SIGNER@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository "${SIGNER%%/.github/*}" \
+            --certificate-github-workflow-sha "$GITHUB_SHA"
+
+  publish:
+    name: publish
+    needs: [release-plz, build, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      # The version and minor-line tags on GHCR.
+      packages: write
+    env:
+      TAG: ${{ needs.release-plz.outputs.tag }}
+      VERSION: ${{ needs.release-plz.outputs.version }}
+      DIGEST: ${{ needs.build.outputs.image-digest }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443 ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # The version, such as 0.1.0, and the minor line, such as 0.1, go only on
+      # a verified image, because compose pull and podman auto-update follow
+      # them. A single source keeps its digest, which the check confirms.
+      - name: Tag the verified image
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ && "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          minor="${VERSION%.*}"
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" --tag "$IMAGE:$minor" \
+            "$IMAGE@$DIGEST"
+          for tag in "$VERSION" "$minor"; do
+            test "$(docker buildx imagetools inspect "$IMAGE:$tag" \
+              --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
+          done
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '{draft, prerelease, immutable, assets: [.assets[].name]}'

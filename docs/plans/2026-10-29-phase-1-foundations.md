@@ -1073,42 +1073,46 @@ Done: merged in 8f9e0cc (#28) on 2026-10-30.
 
 - Create: `docs/decisions/0006-release-pipeline.md`
 
-- [ ] **Step 1: Set up a throwaway repository.** After Mika agrees in the
+- [x] **Step 1: Set up a throwaway repository.** After Mika agrees in the
       question dialog, create the public repository
       `nemesis398/phyllon-release-spike` with a minimal crate,
       `release-plz.toml` (`git_only = true`, `git_release_draft = true`,
       `git_release_type = "pre"`, `release_always = false`) and immutable
       releases on.
-- [ ] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
+- [x] **Step 2: Try dist.** Run `dist init` with GitHub attestations, and make
       its generated workflow attach to the draft that release-plz created, then
       publish only after verification. Its build and attest steps have to run
       inside a reusable workflow (`on: workflow_call`) that the release workflow
       calls, for SLSA Build Level 3. Note every edit the generated workflow
       needed.
-- [ ] **Step 3: Try our own build job:** a reusable workflow in which two native
+- [x] **Step 3: Try our own build job:** a reusable workflow in which two native
       runners build the static binaries and attest them; the calling workflow
       uploads them to the draft, verifies them with `--signer-workflow` and
       publishes. Its build job runs with `step-security/harden-runner` in block
       mode (Mika, 2026-10-30), so the spike learns the allowlist: the audit
       output of a first run gives the hosts, and Task 20 takes the list from
       here.
-- [ ] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
+- [x] **Step 4: Release a branch named `release-plz-v0.1.0` from each variant,**
       and check that `release_always = false` releases a merge from that branch
       and ignores an ordinary merge.
-- [ ] **Step 5: Decide and record.** dist stays if it fits the
+- [x] **Step 5: Decide and record.** dist stays if it fits the
       draft-then-publish order and builds inside the reusable workflow with its
       generated workflow intact; otherwise the own job. Check with
       `gh attestation verify --signer-workflow` that each variant's attestation
       names the reusable workflow as its signer, not the caller. Write 0006 with
       what each needed. Then, after Mika agrees, delete the spike repository.
 
+Done: merged in c1d8ee4 (#30) on 2026-10-31.
+
 ### Task 20: The release workflow
 
 **Files:**
 
 - Create: `release-plz.toml`, `scripts/prepare-release.sh`,
-  `.github/workflows/release.yml`, `.github/workflows/build.yml`,
-  `deploy/compose.release.yaml.tmpl`
+  `.github/workflows/release.yml`, `.github/workflows/build.yml`. As built, the
+  release's `compose.yaml` comes from the repository's `compose.yaml` with its
+  one Phyllon `image:` line pinned to the digest, so no template file exists
+  (Task 20 review).
 - Modify: `scripts/github-settings.sh` (if the release needs a setting)
 
 **Interfaces:**
@@ -1132,11 +1136,12 @@ Done: merged in 8f9e0cc (#28) on 2026-10-30.
       for `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` on native
       runners, built with `cargo auditable build --release --locked` (Mika,
       2026-10-30), with a CycloneDX SBOM each from `cargo-cyclonedx`; the image,
-      built per architecture by digest and merged into one manifest tagged with
-      the version and its minor line, with `sbom: true` and
-      `provenance: mode=max`; `actions/attest` for every binary, SBOM and the
-      image digest; `cosign sign --yes` on the image digest. Each job holds only
-      the permissions its step needs (`attestations: write`, `id-token: write`,
+      built per architecture by digest and merged into one manifest, with an
+      SBOM from a pinned `buildkit-syft-scanner` and `provenance: mode=max` (as
+      built, the version and minor-line tags go on in `release.yml`'s `publish`,
+      after verify); `actions/attest` for every binary, SBOM and the image
+      digest; `cosign sign --yes` on the image digest. Each job holds only the
+      permissions its step needs (`attestations: write`, `id-token: write`,
       `contents: read`, and `packages: write` for the image). The first step of
       every job is the pinned `step-security/harden-runner` with
       `egress-policy: block` and the `allowed-endpoints` that Task 19 learned:
@@ -1147,12 +1152,12 @@ Done: merged in 8f9e0cc (#28) on 2026-10-30.
       permissions, and the same Harden-Runner first step in every job that has
       steps, each job with only the endpoints it needs. Jobs: `release-plz` (tag
       and draft; outputs whether a release was created and its tag); `build`,
-      which calls `build.yml` only when a release was created; the release's
-      `compose.yaml`, rendered from the template with the image digest;
-      `verify`, which runs
+      which calls `build.yml` only when a release was created (as built,
+      `build.yml` also renders and attests the release's `compose.yaml` with the
+      image digest); `verify`, which runs
       `gh attestation verify --signer-workflow nemesis398/phyllon/.github/workflows/build.yml`
-      on every file and on `oci://ghcr.io/nemesis398/phyllon:<version>`, and
-      `cosign verify` with
+      on every file and on the image (as built, by digest, since the version tag
+      goes on only in `publish`), and `cosign verify` with
       `--certificate-identity https://github.com/nemesis398/phyllon/.github/workflows/build.yml@refs/heads/main`
       and
       `--certificate-oidc-issuer https://token.actions.githubusercontent.com`;
