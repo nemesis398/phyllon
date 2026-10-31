@@ -73,7 +73,8 @@ to. Types: `Config`, `DatabaseConfig`, `Secret`, `ConfigError` and `ParseError`.
 - The config file must hold no secret. A secret lives in its own file, which a
   `*_file` key names (`database.password_file`), and `Config::load` does not
   read it. `DatabaseConfig::password` reads it, strips one trailing line ending
-  and nothing else, and returns a `Secret`.
+  and nothing else, and returns a `Secret`. It refuses a file that is empty
+  after that with `ConfigError::EmptySecret`, which names the key and the path.
 - In `Display` and `Debug`, a `ConfigError::Parse` holds the kind of error, the
   keys involved and a line and column, but no other text of the config file. So
   a secret pasted into the file, such as a `password` key that
