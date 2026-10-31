@@ -294,8 +294,12 @@ flowchart LR
   attestations then name `build.yml` as their signer, and verification requires
   exactly that.
 - **No stray network traffic.** Every job in `build.yml` and `release.yml`
-  starts with StepSecurity's Harden-Runner in block mode, which lets the job
-  reach only the hosts it needs (Mika, 2026-10-30, as is the crate list below).
+  starts with StepSecurity's Harden-Runner in block mode, which blocks every
+  host outside the job's allowlist, by name and by IP (Mika, 2026-10-30, as is
+  the crate list below). GitHub's own domains stay reachable whatever the list
+  says, so a compromised step could still reach a gist or a GHCR package. Least
+  `permissions` and short-lived tokens bound what it can do there
+  ([0006](../decisions/0006-release-pipeline.md), Mika, 2026-10-31).
 - **What a release carries.** Static binaries for both architectures, each
   embedding its crate list through `cargo auditable` so a scanner can audit the
   shipped file, a CycloneDX SBOM of the crate graph, a multi-arch image on GHCR
