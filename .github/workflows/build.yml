@@ -10,7 +10,7 @@
 # the two into one image, attests and signs it, and renders the release's
 # compose.yaml with its digest. The version and minor-line tags, such as 0.1.0
 # and 0.1, go on only in release.yml's publish job, after verify has passed,
-# because compose pull and podman auto-update follow them.
+# because people and compose files pull what they name.
 #
 # Every job starts with Harden-Runner in block mode, with the hosts its audit
 # run reached (0006 and the Task 20 audit run).
