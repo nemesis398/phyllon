@@ -4,16 +4,17 @@
 [Unit]
 Description=Phyllon
 # Requires=, unlike the proxy's Wants=: Phyllon is restarted along with its
-# database, whose image is pinned by digest, so auto-update never restarts it.
+# database, whose image is pinned by digest, so no update restarts it by itself.
 Requires=phyllon-db.service
 After=phyllon-db.service
 
 [Container]
 ContainerName=phyllon
-# The minor line rather than a digest, so podman auto-update follows patch
-# releases and never crosses a database migration.
+# The minor line rather than a digest, so an update to a patch release never
+# crosses a database migration. No AutoUpdate=: Podman cannot check this image's
+# signature, so the install guide has you verify it before each update
+# (docs/decisions/0007-podman-signature-policy.md).
 Image=ghcr.io/nemesis398/phyllon:0.1
-AutoUpdate=registry
 User=65532
 Group=65532
 ReadOnly=true
