@@ -82,7 +82,9 @@ cd "$(git rev-parse --show-toplevel)"
 	fail "the working tree is not clean; commit or stash first"
 
 # Without the tags, release-plz update sees no earlier release and changes
-# nothing. --prune drops release branches that were merged and deleted.
+# nothing. --prune drops release branches that were merged and deleted, and
+# together with --tags it also deletes local tags the remote lacks, on
+# purpose: release-plz must see exactly the published tags.
 git fetch --prune --tags "$remote"
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse "refs/remotes/$remote/main")" ]] ||
 	fail "main is not at $remote/main; pull or reset it first"
@@ -146,6 +148,9 @@ else
 fi
 
 new="$(crate_version)"
+# release.yml releases only a plain X.Y.Z, also when release-plz picked it.
+[[ "$new" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+	fail "release-plz chose $new, which is not a plain X.Y.Z version"
 [[ -z "$version" || "$new" == "$version" ]] ||
 	fail "Cargo.toml says $new, not $version"
 tag="v$new"
