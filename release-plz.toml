@@ -1,5 +1,7 @@
 # release-plz reads this when scripts/prepare-release.sh prepares a release
 # and when release.yml tags it. publish = false stays in Cargo.toml (0006).
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
 [workspace]
 # Versions live in git tags; nothing goes to crates.io.
 git_only = true
