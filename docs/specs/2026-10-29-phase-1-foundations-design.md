@@ -178,7 +178,9 @@ networks with `Internal=true` on `db`, the volumes, Podman secrets, and
 unit names the minor line, such as `0.1`, rather than a digest, so
 `podman auto-update` follows patch releases and never crosses a database
 migration, and the install guide pins Podman's signature policy to the build
-workflow's identity, so an image that workflow did not sign is refused.
+workflow's identity, so an image that workflow did not sign is refused. Podman
+cannot enforce that policy for these signatures, so the guide has the user
+verify the image instead (decision record 0007).
 
 **The install guide**, `docs/install.md`, covers three paths (Docker, Podman and
 Quadlet), how to check the image's signature and attestation before the first
