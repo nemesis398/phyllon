@@ -73,18 +73,41 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - run: rustup toolchain install --no-self-update
-      - id: release-plz
-        uses: release-plz/action@7ef5e4d4b0420630cfcaeb182c01e13651d4c577 # v0.5.145
+      # Only the squash merge of a release pull request releases: its subject
+      # is "chore(release): v<version> (#N)", with the version Cargo.toml now
+      # holds. release-plz checks the pull request's branch name on top.
+      - id: gate
+        run: |
+          subject=$(git log -1 --format=%s)
+          version=$(cargo metadata --no-deps --format-version 1 --offline |
+            jq -r --arg bin "$BIN" '.packages[] | select(.name == $bin) | .version')
+          if [[ "$subject" =~ ^chore\(release\):\ (v[0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ &&
+            "${BASH_REMATCH[1]}" == "v$version" ]]; then
+            echo "version=$version" >>"$GITHUB_OUTPUT"
+          else
+            echo "not a release merge: '$subject'"
+          fi
+      # release-plz from install-action's manifest, which checks the release
+      # asset's SHA-256, not through cargo-binstall as release-plz/action does.
+      - if: steps.gate.outputs.version != ''
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
-          command: release
-          version: 0.4.0
+          tool: release-plz@0.4.0
+          fallback: none
+      - id: release-plz
+        if: steps.gate.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          output=$(release-plz release --git-token "$GITHUB_TOKEN" --forge github -o json)
+          echo "release-plz: $output"
+          echo "releases=$(jq -c .releases <<<"$output")" >>"$GITHUB_OUTPUT"
       # The tag reaches later run: steps only through the environment, and
       # only in the form v1.2.3.
       - id: out
         env:
           RELEASES: ${{ steps.release-plz.outputs.releases }}
+          EXPECTED: ${{ steps.gate.outputs.version }}
         run: |
           tag=$(jq -r '.[0].tag // empty' <<<"${RELEASES:-[]}")
           version=$(jq -r '.[0].version // empty' <<<"${RELEASES:-[]}")
@@ -92,7 +115,8 @@ jobs:
             echo "released=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$tag" == "v$version" ]]; then
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$tag" == "v$version" &&
+            "$version" == "$EXPECTED" ]]; then
             echo "unexpected tag '$tag' for version '$version'" >&2
             exit 1
           fi
