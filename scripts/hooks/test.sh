@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Tests for stop-gate.sh, the Claude Code Stop hook. Each test builds its own
-# git repository in a temporary directory, copies the hook into it, feeds it the
-# JSON document Claude Code sends on stdin and checks the exit code, the output
-# and the marker files in target/. A fake gate, named by PHYLLON_GATE_CMD,
-# stands in for scripts/check.sh, so the tests run in seconds and never touch
-# this checkout's target/. Run it with:
+# Tests for stop-gate.sh, the Claude Code Stop hook, and for the git
+# pre-commit hook in .githooks/. Each test builds its own git repository in a
+# temporary directory and copies the hook into it. A Stop hook test feeds it
+# the JSON document Claude Code sends on stdin and checks the exit code, the
+# output and the marker files in target/; a fake gate, named by
+# PHYLLON_GATE_CMD, stands in for scripts/check.sh. A pre-commit test stages
+# files and runs the hook, with a fake scripts/check.sh committed in the
+# repository. So the tests run in seconds and never touch this checkout's
+# target/. Run it with:
 #
 #   scripts/hooks/test.sh
 #
@@ -15,6 +18,7 @@
 set -euo pipefail
 
 hooks_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+pre_commit="$hooks_dir/../../.githooks/pre-commit"
 
 # Keep the user's git configuration (signing, hooks, templates) out of the
 # temporary repositories.
@@ -105,6 +109,48 @@ tool_bin() {
 		ln -s "$(command -v "$tool")" "$bin/$tool"
 	done
 	echo "$bin"
+}
+
+# Creates a repository with the pre-commit hook under test and, as
+# scripts/check.sh, a fake gate that logs each call and passes, both committed.
+# gate_calls counts the calls.
+new_commit_repo() {
+	local dir
+	dir="$(mktemp -d -p "$scratch")"
+	repo="$dir/repo"
+	gate="$dir/fake-gate"
+	git init -q "$repo"
+	mkdir -p "$repo/.githooks" "$repo/scripts"
+	cp -p "$pre_commit" "$repo/.githooks/pre-commit"
+	printf '#!/usr/bin/env bash\necho "fake gate ran" >>"%s/calls"\n' \
+		"$dir" >"$repo/scripts/check.sh"
+	chmod +x "$repo/scripts/check.sh"
+	git -C "$repo" add .githooks/pre-commit scripts/check.sh
+	git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
+		commit -qm init
+}
+
+# Changes $1 in $repo and stages it. A file that exists, such as the hook or
+# the fake gate, gets a comment line at the end, so it still runs.
+stage_change() {
+	local path="$1"
+	mkdir -p "$(dirname "$repo/$path")"
+	if [[ -f "$repo/$path" ]]; then
+		printf '# changed\n' >>"$repo/$path"
+	else
+		printf 'changed\n' >"$repo/$path"
+	fi
+	git -C "$repo" add -- "$path"
+}
+
+# Runs the pre-commit hook inside $repo, as git does, and records the exit
+# code, stdout and stderr.
+run_pre_commit() {
+	status=0
+	(cd "$repo" && .githooks/pre-commit >"$scratch/out" 2>"$scratch/err") ||
+		status=$?
+	out="$(cat "$scratch/out")"
+	err="$(cat "$scratch/err")"
 }
 
 # Each check prints why it failed and returns non-zero, which fails the test.
@@ -301,21 +347,35 @@ a_linked_worktree_is_gated_in_its_own_tree() {
 	expect_no_file "$repo/target/.gate-red"
 }
 
+# The files both hooks must count: the Rust code, the other compile inputs
+# (the Askama templates and the files include_bytes! reads), and the
+# configuration of Cargo, its tools and the gate. The pre-commit hook's
+# gate_paths and the first group of the Stop hook's are these.
+shared_gate_paths=(
+	src/lib.rs crates/a/src/lib.rs
+	Cargo.toml crates/a/Cargo.toml
+	Cargo.lock crates/a/Cargo.lock
+	clippy.toml crates/a/clippy.toml
+	deny.toml crates/a/deny.toml
+	rust-toolchain.toml crates/a/rust-toolchain.toml
+	rust-toolchain crates/a/rust-toolchain
+	rustfmt.toml .rustfmt.toml crates/a/.rustfmt.toml
+	.cargo/config.toml crates/a/.cargo/config.toml
+	.cargo/config crates/a/.cargo/config
+	.config/nextest.toml
+	templates/base.html templates/partials/nav.html
+	assets/phyllon.css assets/fonts/a.woff2
+	brand/logo.svg
+	scripts/check.sh
+	.githooks/pre-commit .githooks/lib/common.sh
+)
+
 every_gate_file_runs_the_gate() {
 	local path missed=()
 	local paths=(
-		src/lib.rs crates/a/src/lib.rs
-		Cargo.toml crates/a/Cargo.toml
-		Cargo.lock crates/a/Cargo.lock
-		clippy.toml crates/a/clippy.toml
-		deny.toml crates/a/deny.toml
-		rust-toolchain.toml crates/a/rust-toolchain.toml
-		rustfmt.toml .rustfmt.toml crates/a/.rustfmt.toml
-		.cargo/config.toml crates/a/.cargo/config.toml
+		"${shared_gate_paths[@]}"
 		taplo.toml
 		.github/workflows/ci.yml
-		scripts/check.sh
-		.githooks/pre-commit .githooks/lib/common.sh
 		.claude/settings.json
 		scripts/hooks/format-edited.sh
 	)
@@ -331,6 +391,35 @@ every_gate_file_runs_the_gate() {
 	done
 	((${#missed[@]} == 0)) || {
 		echo "  a change to these did not run the gate: ${missed[*]}"
+		return 1
+	}
+}
+
+every_gate_file_runs_the_pre_commit_gate() {
+	local path missed=()
+	for path in "${shared_gate_paths[@]}"; do
+		new_commit_repo
+		stage_change "$path"
+		run_pre_commit
+		[[ "$status" == 0 && "$(gate_calls)" == 1 ]] || missed+=("$path")
+	done
+	((${#missed[@]} == 0)) || {
+		echo "  a commit of these did not run the gate: ${missed[*]}"
+		return 1
+	}
+}
+
+a_commit_of_other_files_skips_the_pre_commit_gate() {
+	new_commit_repo
+	stage_change README.md
+	stage_change docs/book.toml
+	stage_change .github/dependabot.yml
+	stage_change docs/templates/page.html
+	run_pre_commit
+	expect_status 0
+	expect_calls 0
+	[[ "$out" == *"skipping scripts/check.sh"* ]] || {
+		echo "  expected the skip message, got: $out"
 		return 1
 	}
 }
@@ -470,6 +559,8 @@ tests=(
 	a_deleted_tracked_file_runs_the_gate_again
 	a_change_to_another_file_skips_the_gate
 	every_gate_file_runs_the_gate
+	every_gate_file_runs_the_pre_commit_gate
+	a_commit_of_other_files_skips_the_pre_commit_gate
 	another_gate_command_runs_the_gate
 	a_linked_worktree_is_gated_in_its_own_tree
 	a_gate_past_its_deadline_blocks_the_stop

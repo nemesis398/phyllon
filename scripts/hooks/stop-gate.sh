@@ -157,9 +157,9 @@ if [[ -n "$cwd" && -d "$cwd" ]]; then
 fi
 cd "$root"
 
-# The first group matches gate_paths in .githooks/pre-commit; keep the two in
-# step. In glob magic, "**/" also matches the top level and "*" stops at a
-# slash.
+# The first group matches gate_paths in .githooks/pre-commit, which says why
+# each is there; keep the two in step. In glob magic, "**/" also matches the
+# top level and "*" stops at a slash.
 gate_paths=(
 	':(glob)**/*.rs'
 	':(glob)**/Cargo.toml'
@@ -167,8 +167,14 @@ gate_paths=(
 	':(glob)**/clippy.toml'
 	':(glob)**/deny.toml'
 	':(glob)**/rust-toolchain.toml'
+	':(glob)**/rust-toolchain'
 	':(glob)**/*rustfmt.toml'
 	':(glob)**/.cargo/config.toml'
+	':(glob)**/.cargo/config'
+	':(glob).config/nextest.toml'
+	':(glob)templates/**'
+	':(glob)assets/**'
+	':(glob)brand/**'
 	':(glob)scripts/check.sh'
 	':(glob).githooks/**'
 

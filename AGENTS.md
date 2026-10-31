@@ -111,5 +111,5 @@ trusted, but this repository ships none
 So for Codex, as for any tool without a Stop hook here, the git pre-commit hook
 in `.githooks/` and CI are the only gate: turn the hook on with
 `git config core.hooksPath .githooks`, and run `scripts/check.sh` yourself
-before you say done, because the hook skips commits that touch no Rust or Cargo
-files.
+before you say done, because the hook skips commits that touch no Rust code,
+other compile input or Cargo file.
