@@ -72,18 +72,12 @@ needs no root even under rootless Podman.
    Do not skip this. When a file is missing, Compose creates an empty directory
    in its place, and the database setup then fails on a password it cannot read.
 
-4. Build the image. This step is temporary, until the first release is published
-   (see [Build the image yourself](#build-the-image-yourself)). With Podman:
-
-   ```bash
-   podman build -t ghcr.io/nemesis398/phyllon:0.1 .
-   ```
-
-   With Docker:
-
-   ```bash
-   docker build -t ghcr.io/nemesis398/phyllon:0.1 .
-   ```
+4. Get the image. The first start in the next step pulls
+   `ghcr.io/nemesis398/phyllon:0.1` on its own but checks nothing. To check its
+   signature first, pull it as [Verifying a release](#verifying-a-release)
+   shows, and the next step uses it without pulling again. To run your own
+   changes instead, build the image yourself (see
+   [Build the image yourself](#build-the-image-yourself)).
 
 5. Start the stack and wait until every service is healthy.
 
@@ -91,8 +85,8 @@ needs no root even under rootless Podman.
    docker compose up -d --wait
    ```
 
-   The first start pulls two images and sets up the database, so allow a minute
-   or two.
+   The first start pulls the images that are missing and sets up the database,
+   so allow a minute or two.
 
 6. Check that Phyllon answers:
 
@@ -214,8 +208,11 @@ steps as your own user, not as root.
    done
    ```
 
-3. Build the image ([Build the image yourself](#build-the-image-yourself)),
-   because the first release does not exist yet.
+3. Get the image. The first start pulls `ghcr.io/nemesis398/phyllon:0.1` on its
+   own but checks nothing. To check its signature first, pull it as
+   [Verifying a release](#verifying-a-release) shows. To run your own changes
+   instead, build the image yourself
+   ([Build the image yourself](#build-the-image-yourself)).
 
 4. Let your services run when you are not logged in, then load the units and
    start the stack. Linger is a systemd setting for your user. Turning it on for
@@ -477,10 +474,9 @@ They change only when you update the checkout or the units.
 
 ### Build the image yourself
 
-This part is temporary. It goes away when the first release is published.
-
-From the checkout, build the image under the name the stack expects. With
-Podman:
+The released image needs no build. Build it yourself to run changes you made to
+the code, or `main` ahead of a release. From the checkout, build the image under
+the name the stack expects. With Podman:
 
 ```bash
 podman build -t ghcr.io/nemesis398/phyllon:0.1 .
@@ -495,5 +491,4 @@ docker build -t ghcr.io/nemesis398/phyllon:0.1 .
 To give the image another name, build it under that name and set `PHYLLON_IMAGE`
 in `.env` to it. The Quadlet unit has no variable: set `Image=` in a drop-in, or
 build under the shipped name. A local image is used as it is, so nothing is
-pulled from `ghcr.io`. Do not turn on the auto-update timer until the image is
-published, because the registry has no `0.1` to compare with.
+pulled from `ghcr.io`.
