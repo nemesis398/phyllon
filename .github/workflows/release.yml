@@ -317,9 +317,18 @@ jobs:
             test "$(docker buildx imagetools inspect "$IMAGE:$tag" \
               --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
           done
+      # Publishes the draft and fails unless the release is now published, a
+      # pre-release (release-plz.toml) and immutable, so a change that drops
+      # one of them fails the run instead of passing silently.
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-            --jq '{draft, prerelease, immutable, assets: [.assets[].name]}'
+          state="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '{draft, prerelease, immutable, assets: [.assets[].name]}')"
+          echo "$state"
+          if ! jq -e '.draft == false and .prerelease == true and .immutable == true' \
+            <<<"$state" >/dev/null; then
+            echo "::error::the release is not published, pre-release and immutable" >&2
+            exit 1
+          fi
