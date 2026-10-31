@@ -60,16 +60,36 @@ that builds static binaries for `x86_64-unknown-linux-musl` and
   `GET /repos/{repo}/commits/{sha}/pulls` and matches the head branch prefix
   `release-plz-`. It creates the tag through the API, so checkout keeps
   `persist-credentials: false`.
-- **Block mode blocks.** A probe job with the same allowlist (run 41131114284)
-  reached `github.com`, and its curl to `example.com` failed with "Couldn't
-  connect to server". The agent logged `domain not allowed: example.com.`.
+- **Block mode blocks unlisted hosts, except GitHub's own.** Two probe runs used
+  the binary job's allowlist in a top-level job. Run 41131114284 (2026-10-30)
+  ran on x64 only; run 41180288070 (2026-10-31) ran on `ubuntu-24.04` and
+  `ubuntu-24.04-arm` with identical results:
+
+  | Check                                                | Result      | Harden-Runner log                  |
+  | ---------------------------------------------------- | ----------- | ---------------------------------- |
+  | `github.com`, listed                                 | got through | none                               |
+  | `example.com` by name                                | blocked     | `domain not allowed: example.com.` |
+  | `example.com` by IP, `--resolve` with both addresses | blocked     | `ip address dropped: <address>`    |
+  | `https://1.1.1.1`                                    | blocked     | `endpoint called`, no reason given |
+  | `gist.github.com`, unlisted                          | got through | `endpoint called`                  |
+  | `ghcr.io/v2/`, unlisted                              | got through | `endpoint called`                  |
+  | `objects.githubusercontent.com`, unlisted            | blocked     | `domain not allowed: objects...`   |
+
+  At its start, the agent fetches what it logs as "GitHub meta domains":
+  `github.com`, `*.github.com`, `*.githubapp.com`, `ghcr.io` and a set of
+  `productionresultssa*.blob.core.windows.net` hosts. It lets them through
+  whether or not they are listed. Measured for `gist.github.com`, `ghcr.io` and
+  the blob hosts, which the block-mode release jobs reached unlisted; inferred
+  for the rest. `*.githubusercontent.com` is not among them. Not measured:
+  `*.githubapp.com`, other ports, and the same checks inside a job of a reusable
+  workflow.
 
 **dist did not fit**, for five reasons:
 
-1. **Its generated workflow cannot be called.** dist generates triggers only for
-   a tag push, a pull request or a `workflow_dispatch`, and has no setting for
-   `workflow_call`. A tag that release-plz pushes with `GITHUB_TOKEN` starts no
-   workflow. Running dist as a reusable workflow took two hand edits to its
+1. **Its workflow cannot be called as generated.** dist generates triggers only
+   for a tag push, a pull request or a `workflow_dispatch`, and has no setting
+   for `workflow_call`. A tag that release-plz pushes with `GITHUB_TOKEN` starts
+   no workflow. Running dist as a reusable workflow took two hand edits to its
    `release.yml`: the trigger became `workflow_call` with the input `tag`, and
    Harden-Runner went first in each of its five jobs. dist's
    `github-build-setup` only adds steps before `dist build`. With
@@ -82,12 +102,12 @@ that builds static binaries for `x86_64-unknown-linux-musl` and
    writes the file at all. From then on the file is ours, and every dist upgrade
    means merging its changes by hand.
 3. **The generated file fails our workflow checks.** zizmor 1.31.1 reports 14
-   findings on the untouched file: high `excessive-permissions` (top-level
-   `contents: write`) and `template-injection` (`${{ }}` inside `run:`), two
-   `unpinned-images`, `secrets-inherit`, and further template injections.
-   actionlint 1.7.12 reports 4 shellcheck findings. Phyllon's `workflows.yml`
-   fails on any of them. The `github-action-commits` setting pins the `uses:`
-   actions by SHA, but without the `# vX.Y.Z` comment.
+   findings on the untouched file: high `excessive-permissions` for the
+   top-level `contents: write`, high `template-injection` for expressions inside
+   `run:`, two `unpinned-images`, `secrets-inherit`, and further template
+   injections. actionlint 1.7.12 reports 4 shellcheck findings. Phyllon's
+   `workflows.yml` fails on any of them. The `github-action-commits` setting
+   pins the `uses:` actions by SHA, but without the `# vX.Y.Z` comment.
 4. **It installs itself unpinned.** The plan and build jobs run:
 
    ```sh
@@ -109,17 +129,25 @@ that builds static binaries for `x86_64-unknown-linux-musl` and
    if: ${{ always() && needs.host.result == 'success' && (needs.custom-verify.result == 'skipped' || needs.custom-verify.result == 'success') }}
    ```
 
-   Canceling the rerun of run 41123819243 skipped verify, and announce started
-   anyway. Its upload-and-undraft step failed only because of the cancel. verify
-   is also skipped by its own `if:` for a version with a pre-release suffix,
-   such as `0.2.0-rc.1`, when `publish-prereleases` is false.
+   This was observed. Canceling attempt 2 of run 41123819243 skipped verify, and
+   announce started anyway. Its first call, `gh release upload`, failed with
+   `HTTP 401: Bad credentials`, most likely because the cancel had revoked the
+   token, so nothing was uploaded or published. A second path was read from the
+   generated `if:` of `custom-verify`, not observed: verify also skips itself
+   for a version with a pre-release suffix, such as `0.2.0-rc.1`, when
+   `publish-prereleases` is false, and announce would then publish unverified.
 
 dist did get the Level 3 signer: its build attestations named its called
-`release.yml`, not the caller, and the caller was rejected as signer. The v0.2.0
-run hung, though. In `build-global-artifacts`, checkout failed and the Post
-Harden-Runner step then stayed in progress for about 45 minutes. GitHub never
-stored that job's log (404 BlobNotFound), so the cause is unknown, and the draft
-was never published.
+`release.yml`, not the caller, and the caller was rejected as signer.
+
+dist's flow never ran from start to finish. In attempt 1 of the v0.2.0 run,
+checkout failed in `build-global-artifacts`, and the Post Harden-Runner step
+then stayed in progress for about 45 minutes until the run was canceled. GitHub
+never stored that job's log (404 BlobNotFound), so the cause is unknown. Attempt
+2 was an unintended rerun of the failed jobs. It was canceled when the stop
+order arrived, before announce could publish, and the draft was never published.
+The maintainer chose not to retry dist (Mika, 2026-10-30): the rejection rests
+on reasons 1 to 5, not on the hang.
 
 ## Options
 
@@ -155,48 +183,73 @@ Use option 3. Task 20 writes `build.yml` and `release.yml` as follows:
   default is SLSA provenance. The image job also lives in `build.yml`. As long
   as no crate compiles C code, no `musl-tools` is needed: the binaries came out
   `static-pie linked` and carry the `.dep-v0` section.
-- **`release.yml`** runs release-plz (`command: release`, `contents: write`,
-  `pull-requests: read`), then calls `build.yml`. An attach job uploads to the
-  draft with `contents: write`. The verify job, also with `contents: write` plus
-  `attestations: read`, downloads the draft's assets and runs
+- **`release.yml`** runs release-plz (`command: release`), then calls
+  `build.yml`, then attaches, verifies and publishes. The release-plz job checks
+  that the tag from its `releases` output, read with `jq`, matches
+  `^v[0-9]+\.[0-9]+\.[0-9]+$` and equals `v` plus the version. The tag reaches
+  `run:` steps only as an environment variable. The verify job downloads the
+  draft's assets, checks that their number is the expected one, and runs
   `gh attestation verify` on each, with `--deny-self-hosted-runners` and
-  `--signer-workflow nemesis398/phyllon/.github/workflows/build.yml`. A publish
-  job, which needs verify, runs `gh release edit <tag> --draft=false`. The tag
-  comes from release-plz's `releases` output through `jq`, is checked against
-  `^v[0-9]+\.[0-9]+\.[0-9]+$`, and reaches `run:` steps only as an environment
-  variable.
-- **Every job sets `timeout-minutes`.** None of the spike's did, so its hung job
-  could have run for the default 6 hours.
-- **Harden-Runner `egress-policy: block`** in every job with steps, with these
-  `allowed-endpoints`, each on port 443 (measured in audit runs, then proven in
-  block mode):
+  `--signer-workflow nemesis398/phyllon/.github/workflows/build.yml`. It also
+  checks that each file fails with `release.yml` as the signer. Adding
+  `--source-ref refs/heads/main` matches what the certificates carried, but the
+  spike did not run that flag. The publish job needs verify and runs
+  `gh release edit <tag> --draft=false`.
+- **Permissions**, under top-level `permissions: {}` in both files, as the spike
+  ran them:
 
-  | Job           | Allowed endpoints                                                                                                                                                                                                                                                                                              |
-  | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | release-plz   | `github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `index.crates.io`, `static.crates.io`, `static.rust-lang.org`                                                                                                                                                                          |
-  | binary (each) | `github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `static.rust-lang.org`, `index.crates.io`, `static.crates.io`, `fulcio.sigstore.dev`, `rekor.sigstore.dev`, `token.actions.githubusercontent.com`, `results-receiver.actions.githubusercontent.com`, `*.actions.githubusercontent.com` |
-  | image (build) | `github.com`, `api.github.com`, `results-receiver.actions.githubusercontent.com`, `registry-1.docker.io`, `auth.docker.io`, `production.cloudfront.docker.com`, `gcr.io`, `dl-cdn.alpinelinux.org`, `index.crates.io`, `static.crates.io`                                                                      |
-  | attach        | `api.github.com`, `uploads.github.com`, `results-receiver.actions.githubusercontent.com`                                                                                                                                                                                                                       |
-  | verify        | `api.github.com`, `release-assets.githubusercontent.com`, `tmaproduction.blob.core.windows.net`, `tuf-repo-cdn.sigstore.dev`, `tuf-repo.github.com`                                                                                                                                                            |
-  | publish       | `api.github.com`                                                                                                                                                                                                                                                                                               |
+  | Job                            | Permissions                                                                        |
+  | ------------------------------ | ---------------------------------------------------------------------------------- |
+  | release-plz                    | `contents: write`, `pull-requests: read`                                           |
+  | the job that calls `build.yml` | `contents: read`, `id-token: write`, `attestations: write`                         |
+  | `build.yml` binary (each)      | `contents: read`, `id-token: write`, `attestations: write`                         |
+  | attach                         | `contents: write`                                                                  |
+  | verify                         | `contents: write` (a draft is invisible to `contents: read`), `attestations: read` |
+  | publish                        | `contents: write`                                                                  |
+
+  The calling job caps what the called workflow may ask for, so it holds the
+  union of `build.yml`'s jobs. The image job's `packages: write`,
+  `id-token: write` and `attestations: write` were not measured, and adding them
+  raises the calling job's grant to match.
+
+- **Every job sets `timeout-minutes`.** None of the spike's did, so its hung job
+  could have run for the default 6 hours. In run 41122718480 the jobs took 13 s
+  (attach) to 69 s (image-probe), the binaries about 40 s each. Phyllon's crate
+  graph compiles far longer than the spike's one dependency, so Task 20 sets
+  each limit from its own first run, with a wide margin.
+- **Harden-Runner `egress-policy: block`** in every job with steps, with these
+  `allowed-endpoints`, each on port 443, measured in audit runs and then run in
+  block mode:
+
+  | Job           | Allowed endpoints                                                                                                                                                                                                                         |
+  | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | release-plz   | `github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `index.crates.io`, `static.crates.io`, `static.rust-lang.org`                                                                                                     |
+  | binary (each) | `github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `static.rust-lang.org`, `index.crates.io`, `static.crates.io`, `fulcio.sigstore.dev`, `rekor.sigstore.dev`, `*.actions.githubusercontent.com`                     |
+  | image (build) | `github.com`, `api.github.com`, `results-receiver.actions.githubusercontent.com`, `registry-1.docker.io`, `auth.docker.io`, `production.cloudfront.docker.com`, `gcr.io`, `dl-cdn.alpinelinux.org`, `index.crates.io`, `static.crates.io` |
+  | attach        | `api.github.com`, `uploads.github.com`, `results-receiver.actions.githubusercontent.com`                                                                                                                                                  |
+  | verify        | `api.github.com`, `release-assets.githubusercontent.com`, `tmaproduction.blob.core.windows.net`, `tuf-repo-cdn.sigstore.dev`, `tuf-repo.github.com`                                                                                       |
+  | publish       | `api.github.com`                                                                                                                                                                                                                          |
 
   `release-assets.githubusercontent.com` serves the tools that release-plz's
   action and `taiki-e/install-action` download, and the draft's assets. The
-  wildcard is needed because the Actions service host changes between runs
-  (`run-actions-1-azure-eastus`, then `run-actions-3-azure-eastus`).
-  Harden-Runner allows `github.com`, `*.github.com`, `*.githubapp.com`,
-  `ghcr.io`, `productionresultssa*.blob.core.windows.net` and its own
-  StepSecurity endpoints by itself. The block run reached the blob hosts without
-  listing them.
+  binary jobs need the wildcard because the Actions service host changes between
+  runs (`run-actions-1-azure-eastus`, then `run-actions-3-azure-eastus`). It
+  also covers `token.` and `results-receiver.actions.githubusercontent.com`,
+  which the spike listed beside it. Listing GitHub's own hosts documents what a
+  job uses, but the probe shows that Harden-Runner lets its GitHub meta domains
+  through either way.
 
-- **What the spike did not measure.** The image job built the image only. It did
-  not push to GHCR, attest the image or sign with cosign, and verify ran no
-  `cosign verify`. Task 20 runs those steps once in audit mode, reads the
-  agent's `endpoint called` lines in the Post Harden-Runner log, and adds the
-  hosts it finds before switching to block.
-- **`release-plz.toml`** takes exactly the four settings above, plus
-  `publish = false`. That combination is valid; only `git_only` together with
-  `publish = true` is rejected.
+- **What the spike did not measure.** The image job built one architecture with
+  `push: false`. The spike did not build the multi-arch image, push to GHCR,
+  attest the image or sign it with cosign. Its verify ran no
+  `gh attestation verify` on the image and no `cosign verify`, and it attached
+  no `compose.yaml` with the image digest. Task 20 runs those steps once in
+  audit mode, reads the agent's `endpoint called` lines in the Post
+  Harden-Runner log, and adds the hosts it finds before switching to block.
+- **`release-plz.toml`** takes exactly the four settings above.
+  `publish = false` stays in `Cargo.toml`, where Phyllon already has it, and is
+  valid with `git_only`: release-plz rejects only `git_only` together with
+  `publish = true`.
 - **`scripts/prepare-release.sh`** runs `git fetch --tags` first, because
   without the tags `release-plz update` sees no release and changes nothing. The
   first release starts from a `main` without `CHANGELOG.md`, sets
@@ -208,7 +261,7 @@ Use option 3. Task 20 writes `build.yml` and `release.yml` as follows:
   and it fails on a changelog without one. Only one release branch exists at a
   time, cut from current `main`, because release branches stacked on each other
   conflict in `Cargo.toml`, `Cargo.lock` and `CHANGELOG.md` once the earlier
-  ones are squash merged.
+  ones are squash-merged.
 - **The reusable-workflow call** keeps `uses: ./.github/workflows/build.yml`
   with `# zizmor: ignore[self-repository]` and a comment that says why: zizmor
   1.31.1 asks for GitHub's newer `$/` form, and actionlint 1.7.12 rejects it.
@@ -223,9 +276,20 @@ Use option 3. Task 20 writes `build.yml` and `release.yml` as follows:
 - We give up dist's installers, checksum files and manifest. Phyllon ships a
   binary, an SBOM and an image, so none of them is missed. If shell or Homebrew
   installers are wanted later, revisit dist with a new record.
+- **Block mode falls short of the design.** The design says Harden-Runner "lets
+  the job reach only the hosts it needs". Measured, it blocks every unlisted
+  host by name and by IP, except GitHub's meta domains: `gist.github.com` and
+  `ghcr.io` got through unlisted, and the agent treats all of `github.com`,
+  `*.github.com`, `*.githubapp.com`, `ghcr.io` and the `productionresultssa*`
+  blob hosts the same way. A compromised step in a release job can therefore
+  still reach any GitHub host, a gist or a GHCR package among them, with
+  whatever token it holds. Least `permissions` and short-lived tokens limit what
+  it can write there; Harden-Runner does not. The design's wording needs an
+  amendment, which the maintainer decides separately.
 - The allowlists are a second list to keep current. A new tool or action in a
-  release job takes one audit run and an update to its list, or the job fails
-  closed.
+  release job takes one audit run and an update to its list. Without that
+  update, the job fails on any host outside GitHub's meta domains; a new GitHub
+  host passes unnoticed.
 - The spike ran on 2026-10-30 during a GitHub Actions and Webhooks incident. The
   repository, created at 18:02:57 UTC, got no push events until Actions was
   turned off and on again. That was an incident artifact, not a finding about
