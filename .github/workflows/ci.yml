@@ -218,6 +218,7 @@ jobs:
       - run: scripts/ci/test.sh
       - run: scripts/ci/check-skill-links.sh
       - run: scripts/ci/check-map.sh
+      - run: scripts/ci/check-image-pins.sh
       - run: scripts/hooks/test.sh
 
   # The web shell in a real browser, in light and dark: axe-core finds no
