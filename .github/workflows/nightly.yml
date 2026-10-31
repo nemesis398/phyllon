@@ -55,9 +55,11 @@ jobs:
         with:
           egress-policy: block
           # github.com and raw.githubusercontent.com serve scan-action's Grype
-          # download, ghcr.io and pkg-containers.githubusercontent.com the
-          # image, grype.anchore.io the vulnerability database, and
-          # api.github.com the SARIF upload.
+          # download, and github.com redirects its release file to
+          # release-assets.githubusercontent.com. ghcr.io and
+          # pkg-containers.githubusercontent.com serve the image,
+          # grype.anchore.io the vulnerability database, and api.github.com
+          # the SARIF upload.
           allowed-endpoints: >
             github.com:443 api.github.com:443 raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443 ghcr.io:443
