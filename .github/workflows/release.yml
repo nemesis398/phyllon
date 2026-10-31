@@ -6,8 +6,8 @@
 # release-plz tags the commit and creates a draft release. build.yml, a
 # reusable workflow, builds, attests and signs. attach puts the files on the
 # draft; verify checks every file and the image against build.yml as the
-# signer; publish moves the image's minor-line tag and publishes the draft as a
-# pre-release. The draft exists because an immutable release takes no new
+# signer; publish tags the image with the version and the minor line and
+# publishes the draft as a pre-release. The draft exists because an immutable release takes no new
 # assets once published, and a failed, skipped or canceled verify leaves the
 # release a draft (docs/decisions/0006-release-pipeline.md).
 #
@@ -26,6 +26,9 @@ on:
 permissions: {}
 
 # One release at a time, and a running release is never canceled halfway.
+# GitHub keeps only one run waiting per group: a later push to main cancels a
+# run that is still waiting. If that run was a release merge, nothing was
+# tagged yet; re-run it from the Actions tab once main is quiet.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -60,6 +63,8 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
+          # Nothing here needs sudo or a container.
+          disable-sudo-and-containers: true
           egress-policy: block
           allowed-endpoints: >
             github.com:443
@@ -154,6 +159,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
+          disable-sudo-and-containers: true
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
@@ -186,8 +192,8 @@ jobs:
       attestations: read
       # The image and its signature on GHCR, while the package is private.
       packages: read
+    # GH_TOKEN goes only to the steps that run gh.
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.release-plz.outputs.tag }}
       VERSION: ${{ needs.release-plz.outputs.version }}
       DIGEST: ${{ needs.build.outputs.image-digest }}
@@ -217,6 +223,8 @@ jobs:
         with:
           cosign-release: v3.1.4
       - name: Check the draft and its files
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$TAG" == "v$VERSION" ]]
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
@@ -235,12 +243,16 @@ jobs:
           diff <(printf '%s\n' "${expected[@]}" | sort) <(find assets -type f -printf '%f\n' | sort)
           # compose.yaml pins the image that is verified below.
           test "$(grep -cxF "    image: $IMAGE:$VERSION@$DIGEST" assets/compose.yaml)" -eq 1
+      # Each signature must come from build.yml, on main, at this commit.
       - name: Verify the files against build.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           for file in assets/*; do
             echo "::group::$file"
             gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$SIGNER" --source-ref refs/heads/main \
+              --source-digest "$GITHUB_SHA" \
               --deny-self-hosted-runners --format json |
               jq '.[] | .verificationResult.signature.certificate | {buildSignerURI, buildConfigURI, sourceRepositoryRef, runInvocationURI}'
             # The caller must not pass as the signer.
@@ -251,23 +263,26 @@ jobs:
             fi
             echo "::endgroup::"
           done
+      # By digest, because the version tag goes on only in publish.
       - name: Verify the image against build.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # The version tag names the digest build.yml reported.
-          test "$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
-            --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
-          gh attestation verify "oci://$IMAGE:$VERSION" --repo "$GITHUB_REPOSITORY" \
+          gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$SIGNER" --source-ref refs/heads/main \
+            --source-digest "$GITHUB_SHA" \
             --deny-self-hosted-runners --format json |
             jq '.[] | .verificationResult.signature.certificate | {buildSignerURI, buildConfigURI, sourceRepositoryRef, runInvocationURI}'
-          if gh attestation verify "oci://$IMAGE:$VERSION" --repo "$GITHUB_REPOSITORY" \
+          if gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$CALLER" >/dev/null 2>&1; then
             echo "release.yml passed as the signer of the image" >&2
             exit 1
           fi
           cosign verify "$IMAGE@$DIGEST" \
             --certificate-identity "https://github.com/$SIGNER@refs/heads/main" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository "${SIGNER%%/.github/*}" \
+            --certificate-github-workflow-sha "$GITHUB_SHA"
 
   publish:
     name: publish
@@ -276,10 +291,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
-      # The minor-line tag on GHCR.
+      # The version and minor-line tags on GHCR.
       packages: write
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.release-plz.outputs.tag }}
       VERSION: ${{ needs.release-plz.outputs.version }}
       DIGEST: ${{ needs.build.outputs.image-digest }}
@@ -296,17 +310,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      # The minor line, such as 0.1, moves only to a verified image, because
-      # podman auto-update and compose pull follow it. A single source keeps
-      # its digest, which the check confirms.
-      - name: Move the minor-line tag
+      # The version, such as 0.1.0, and the minor line, such as 0.1, go only on
+      # a verified image, because compose pull and podman auto-update follow
+      # them. A single source keeps its digest, which the check confirms.
+      - name: Tag the verified image
         run: |
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ && "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           minor="${VERSION%.*}"
-          docker buildx imagetools create --tag "$IMAGE:$minor" "$IMAGE@$DIGEST"
-          test "$(docker buildx imagetools inspect "$IMAGE:$minor" \
-            --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
-      - run: |
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" --tag "$IMAGE:$minor" \
+            "$IMAGE@$DIGEST"
+          for tag in "$VERSION" "$minor"; do
+            test "$(docker buildx imagetools inspect "$IMAGE:$tag" \
+              --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
+          done
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
             --jq '{draft, prerelease, immutable, assets: [.assets[].name]}'

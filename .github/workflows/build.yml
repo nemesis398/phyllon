@@ -7,10 +7,10 @@
 #
 # Jobs: binary builds the two static binaries and their SBOMs; image builds
 # the image once per architecture and pushes it by digest; manifest merges
-# the two into one image tagged with the version, attests and signs it, and
-# renders the release's compose.yaml with its digest. The minor-line tag, such
-# as 0.1, moves only in release.yml's publish job, after verify has passed,
-# because podman auto-update follows it.
+# the two into one image, attests and signs it, and renders the release's
+# compose.yaml with its digest. The version and minor-line tags, such as 0.1.0
+# and 0.1, go on only in release.yml's publish job, after verify has passed,
+# because compose pull and podman auto-update follow them.
 #
 # Every job starts with Harden-Runner in block mode, with the hosts its audit
 # run reached (0006 and the Task 20 audit run).
@@ -84,6 +84,8 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
+          # Nothing here needs sudo or a container.
+          disable-sudo-and-containers: true
           egress-policy: block
           allowed-endpoints: >
             github.com:443
@@ -258,6 +260,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      # imagetools create pushes only under a tag, so the merged image gets
+      # sha-<commit>, which no deployment follows. publish adds the version
+      # and the minor line once verify has passed.
       - id: merge
         name: Merge the two images
         env:
@@ -267,9 +272,9 @@ jobs:
           for digest in "$AMD64" "$ARM64"; do
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           done
-          docker buildx imagetools create --tag "$IMAGE:$VERSION" \
+          docker buildx imagetools create --tag "$IMAGE:sha-$GITHUB_SHA" \
             "$IMAGE@$AMD64" "$IMAGE@$ARM64"
-          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
+          digest=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" \
             --format '{{json .Manifest}}' | jq -r .digest)
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           docker buildx imagetools inspect "$IMAGE@$digest"
