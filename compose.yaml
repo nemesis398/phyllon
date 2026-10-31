@@ -11,7 +11,6 @@
 # therefore mode 0444 inside a 0700 secrets/ directory, and each service mounts
 # only the ones it needs. The z option relabels a mount for SELinux, which
 # would deny it otherwise; Docker ignores it on a host without SELinux.
-# (Mika, 2026-10-30)
 
 services:
   proxy:
