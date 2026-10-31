@@ -3,6 +3,7 @@
 [![CI](https://github.com/nemesis398/phyllon/actions/workflows/ci.yml/badge.svg)](https://github.com/nemesis398/phyllon/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nemesis398/phyllon/badge)](https://scorecard.dev/viewer/?uri=github.com/nemesis398/phyllon)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16071/badge)](https://www.bestpractices.dev/projects/16071)
+[![Release](https://img.shields.io/github/v/release/nemesis398/phyllon?include_prereleases&sort=semver)](https://github.com/nemesis398/phyllon/releases)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 Phyllon keeps a library of learning tasks with their answers, hints, solution
