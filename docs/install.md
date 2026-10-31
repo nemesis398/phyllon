@@ -73,10 +73,10 @@ needs no root even under rootless Podman.
    in its place, and the database setup then fails on a password it cannot read.
 
 4. Get the image. The first start in the next step pulls
-   `ghcr.io/nemesis398/phyllon:0.1` on its own but checks nothing. To check its
-   signature first, pull it as [Verifying a release](#verifying-a-release)
-   shows, and the next step uses it without pulling again. To run your own
-   changes instead, build the image yourself (see
+   `ghcr.io/nemesis398/phyllon:0.1` on its own but checks nothing. To check it
+   first, run the script in [Pull a verified image](#pull-a-verified-image) with
+   `0.1.0`, and the next step uses the image without pulling again. To run your
+   own changes instead, build the image yourself (see
    [Build the image yourself](#build-the-image-yourself)).
 
 5. Start the stack and wait until every service is healthy.
@@ -209,9 +209,9 @@ steps as your own user, not as root.
    ```
 
 3. Get the image. The first start pulls `ghcr.io/nemesis398/phyllon:0.1` on its
-   own but checks nothing. To check its signature first, pull it as
-   [Verifying a release](#verifying-a-release) shows. To run your own changes
-   instead, build the image yourself
+   own but checks nothing. To check it first, run the script in
+   [Pull a verified image](#pull-a-verified-image) with `0.1.0`. To run your own
+   changes instead, build the image yourself
    ([Build the image yourself](#build-the-image-yourself)).
 
 4. Let your services run when you are not logged in, then load the units and
@@ -346,36 +346,41 @@ publishes no port, so such a proxy has nothing to connect to.
 ## Verifying a release
 
 Every release file and the container image are built, signed and attested by one
-GitHub Actions workflow, `build.yml`. Check that before you run anything,
-because the registry and the release page are not the source of trust: the
-signature is. Three tools do it:
+GitHub Actions workflow, `build.yml`, on the `main` branch. Check that before
+you run anything, because the registry and the release page are not the source
+of trust: the signature is. Two tools do it:
 
 - `gh`, the GitHub CLI, logged in with `gh auth login`. It reads the
   attestations from GitHub and refuses to run without a login.
-- `cosign` 3.x, from its
-  [releases page](https://github.com/sigstore/cosign/releases). Check the
-  download against the checksum there before you run it.
-- `jq`, for the last step below.
+- `cosign` 3.x. Download `cosign-linux-amd64` (or your platform's file) from its
+  [releases page](https://github.com/sigstore/cosign/releases), and check it
+  with `gh release verify-asset <tag> cosign-linux-amd64 -R sigstore/cosign`.
+  That asks GitHub's attestation of the immutable release, so a checksum from
+  the same page is not needed.
 
 `gh attestation verify` prints a check mark on a terminal and nothing otherwise,
-so read the exit status: `0` means the file or image passed.
+so read the exit status: `0` means the file or image passed. The two flags
+`--source-ref refs/heads/main` and `--deny-self-hosted-runners` below matter:
+`--signer-workflow` alone accepts `build.yml` run from any branch of the
+repository.
 
 ### A binary or another release file
 
-Download a file, then check that `build.yml` in this repository signed it. The
-same check works for the SBOM (`.cdx.json`) and `compose.yaml`.
+Download a file, then check that `build.yml` in this repository signed it on
+`main`. The same check works for the SBOM (`.cdx.json`) and `compose.yaml`.
 
 ```bash
 signer=nemesis398/phyllon/.github/workflows/build.yml
 gh release download v0.1.0 -R nemesis398/phyllon \
   -p phyllon-x86_64-unknown-linux-musl
 gh attestation verify phyllon-x86_64-unknown-linux-musl \
-  -R nemesis398/phyllon --signer-workflow "$signer"
+  -R nemesis398/phyllon --signer-workflow "$signer" \
+  --source-ref refs/heads/main --deny-self-hosted-runners
 ```
 
 The output lists `Signer workflow: .github/workflows/build.yml@refs/heads/main`.
 A check for `release.yml`, which only calls `build.yml`, fails: the signer is
-`build.yml`.
+`build.yml`. So does a check with another `--source-ref`.
 
 ### The image
 
@@ -384,7 +389,8 @@ from the registry:
 
 ```bash
 gh attestation verify oci://ghcr.io/nemesis398/phyllon:0.1.0 \
-  -R nemesis398/phyllon --signer-workflow "$signer"
+  -R nemesis398/phyllon --signer-workflow "$signer" \
+  --source-ref refs/heads/main --deny-self-hosted-runners
 cosign verify ghcr.io/nemesis398/phyllon:0.1.0 \
   --certificate-identity "https://github.com/$signer@refs/heads/main" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -396,6 +402,11 @@ cosign verify ghcr.io/nemesis398/phyllon:0.1.0 \
 `0.1.0`. To pin a release to its commit, add
 `--certificate-github-workflow-sha <commit>` with the commit of its tag.
 
+A tag such as `0.1` is not proof of a version: it names whatever image the
+registry holds under it, and any image `build.yml` signed on `main` passes the
+checks above, including an older one or one that was never released. The next
+sections therefore take the digest from the release instead.
+
 ### Why Podman does not enforce this for you
 
 A Podman `policy.json` can require a signature at every pull, but it cannot
@@ -406,28 +417,48 @@ run the checks yourself, and the Quadlet unit has no `AutoUpdate=`.
 
 ### Pull a verified image
 
-Verify the tag first, take the digest from the check, and pull that digest, so
-the image you pull is the one you verified even if the tag moves in between.
-With Podman and the minor line the units use:
+A release's `compose.yaml` carries the image's digest, and `build.yml` attested
+the file. So the version you name decides the image: check the file, take the
+digest from it, check the image by that digest, and pull the digest. Save this
+as `verify-image.sh` and run `bash verify-image.sh 0.1.0`, with the version you
+want. `gh release list -R nemesis398/phyllon` lists them. Say
+`ENGINE=docker bash verify-image.sh 0.1.0` for Docker.
 
 ```bash
-image=ghcr.io/nemesis398/phyllon
-digest=$(cosign verify "$image:0.1" \
+#!/usr/bin/env bash
+set -euo pipefail
+version=${1:?usage: verify-image.sh X.Y.Z}
+engine=${ENGINE:-podman}
+repo=nemesis398/phyllon
+signer=$repo/.github/workflows/build.yml
+image=ghcr.io/$repo
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT
+
+gh release download "v$version" -R "$repo" -p compose.yaml --dir "$dir"
+gh attestation verify "$dir/compose.yaml" -R "$repo" --signer-workflow "$signer" \
+  --source-ref refs/heads/main --deny-self-hosted-runners
+digest=$(sed -n "s|^ *image: $image:$version@\(sha256:[0-9a-f]\{64\}\)\$|\1|p" \
+  "$dir/compose.yaml")
+[ -n "$digest" ] || { echo "no digest for $version in compose.yaml" >&2; exit 1; }
+
+cosign verify "$image@$digest" \
   --certificate-identity "https://github.com/$signer@refs/heads/main" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-github-workflow-repository nemesis398/phyllon |
-  jq -r '.[0].critical.image."docker-manifest-digest"')
-gh attestation verify "oci://$image@$digest" \
-  -R nemesis398/phyllon --signer-workflow "$signer"
-podman pull "$image@$digest"
-podman tag "$image@$digest" "$image:0.1"
+  --certificate-github-workflow-repository "$repo" >/dev/null
+gh attestation verify "oci://$image@$digest" -R "$repo" --signer-workflow "$signer" \
+  --source-ref refs/heads/main --deny-self-hosted-runners
+
+"$engine" pull "$image@$digest"
+"$engine" tag "$image@$digest" "$image:${version%.*}"
+echo "verified: $image:$version@$digest"
 ```
 
-The last line points the name `0.1` to the image you verified, so a unit or
-`compose.yaml` that names `0.1` uses it without pulling again. Do the same
-before the first start and before each update. Under Docker, say `docker` for
-`podman`. Compose then needs `docker compose up -d --wait` without a
-`docker compose pull`, because a pull fetches the tag again, unverified.
+The script stops at the first failed check, and an unknown version or a file
+without the digest ends it too. It pulls the image by digest, so you get the one
+you verified even if a tag moves, and then points the minor line (`0.1`) to it.
+A unit that names `0.1` uses that image without pulling again. Run it before the
+first start and before each update.
 
 ## Upgrades
 
@@ -438,24 +469,40 @@ database migration raises the minor number, so a patch release never migrates
 your database. Moving to `0.2` is a deliberate edit, which you make after
 reading its release notes.
 
-Compose:
+Both paths update by version, from a release you have verified. Pick the version
+(`gh release list -R nemesis398/phyllon`), then run the script in
+[Pull a verified image](#pull-a-verified-image) with it, for example `0.1.1`. A
+new patch release of the same line is safe to take; moving to another line is
+described below.
 
-```bash
-docker compose pull
-docker compose up -d --wait
+Compose: in `.env`, set the image to the reference the script prints at the end,
+which pins the digest:
+
+```ini
+PHYLLON_IMAGE=ghcr.io/nemesis398/phyllon:0.1.1@sha256:<digest from the script>
 ```
 
-To move to a new line, change `PHYLLON_IMAGE` in `.env` first.
-`docker compose pull` fetches the tag unverified; to verify first, follow
-[Verifying a release](#verifying-a-release) and skip the pull.
+Then start again with `docker compose up -d --wait`. Compose asks for the digest
+the script verified, not for whatever a tag names, so `docker compose pull` is
+safe too. A release's `compose.yaml` is the repository's with the same reference
+filled in.
 
 Quadlet has no updater: Podman cannot check this image's signature, so it does
 not pull a new image on its own (see
-[Verifying a release](#verifying-a-release)). To update, pull a verified image
-as that section shows, then restart the unit:
+[Verifying a release](#verifying-a-release)). The script points `0.1` to the
+verified image, so restart the unit to use it:
 
 ```bash
 systemctl --user restart phyllon.service
+```
+
+If you installed the units while they still had `AutoUpdate=registry`, copy the
+current `deploy/quadlet/phyllon.container` over yours, then turn the timer off,
+because it would pull an unverified image:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user disable --now podman-auto-update.timer
 ```
 
 To move to a new line, add a drop-in
