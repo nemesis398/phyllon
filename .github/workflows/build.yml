@@ -33,7 +33,8 @@ on:
     outputs:
       binaries:
         description: The binaries' file names, separated by spaces
-        value: ${{ jobs.binary.outputs.x86_64 }} ${{ jobs.binary.outputs.aarch64 }}
+        value:
+          ${{ jobs.binary.outputs.x86_64 }} ${{ jobs.binary.outputs.aarch64 }}
       image-digest:
         description: The digest of the multi-arch image, such as sha256:...
         value: ${{ jobs.manifest.outputs.digest }}
@@ -88,15 +89,10 @@ jobs:
           disable-sudo-and-containers: true
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            release-assets.githubusercontent.com:443
-            static.rust-lang.org:443
-            index.crates.io:443
-            static.crates.io:443
-            fulcio.sigstore.dev:443
-            rekor.sigstore.dev:443
-            *.actions.githubusercontent.com:443
+            github.com:443 api.github.com:443
+            release-assets.githubusercontent.com:443 static.rust-lang.org:443
+            index.crates.io:443 static.crates.io:443 fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443 *.actions.githubusercontent.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
@@ -114,7 +110,9 @@ jobs:
           tool: cargo-auditable@0.7.7,cargo-cyclonedx@0.5.9
           fallback: none
       - run: cargo auditable build --release --locked --target "$TARGET"
-      - run: cargo cyclonedx --format json --spec-version 1.5 --target "$TARGET" --override-filename sbom
+      - run:
+          cargo cyclonedx --format json --spec-version 1.5 --target "$TARGET"
+          --override-filename sbom
       - name: Package and check
         id: package
         run: |
@@ -168,17 +166,11 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            results-receiver.actions.githubusercontent.com:443
-            ghcr.io:443
-            registry-1.docker.io:443
-            auth.docker.io:443
-            production.cloudfront.docker.com:443
-            gcr.io:443
-            dl-cdn.alpinelinux.org:443
-            index.crates.io:443
-            static.crates.io:443
+            github.com:443 api.github.com:443
+            results-receiver.actions.githubusercontent.com:443 ghcr.io:443
+            registry-1.docker.io:443 auth.docker.io:443
+            production.cloudfront.docker.com:443 gcr.io:443
+            dl-cdn.alpinelinux.org:443 index.crates.io:443 static.crates.io:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
@@ -204,7 +196,9 @@ jobs:
           build-args: PHYLLON_GIT_COMMIT=${{ github.sha }}
           attests: type=sbom,generator=docker.io/docker/buildkit-syft-scanner:1.12.0@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
           provenance: mode=max
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          outputs:
+            type=image,name=${{ env.IMAGE
+            }},push-by-digest=true,name-canonical=true,push=true
       - id: digest
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -240,17 +234,12 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
-            api.github.com:443
+            github.com:443 api.github.com:443
             release-assets.githubusercontent.com:443
-            raw.githubusercontent.com:443
-            ghcr.io:443
-            pkg-containers.githubusercontent.com:443
-            fulcio.sigstore.dev:443
-            rekor.sigstore.dev:443
-            timestamp.sigstore.dev:443
-            tuf-repo-cdn.sigstore.dev:443
-            *.actions.githubusercontent.com:443
+            raw.githubusercontent.com:443 ghcr.io:443
+            pkg-containers.githubusercontent.com:443 fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443 timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443 *.actions.githubusercontent.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
