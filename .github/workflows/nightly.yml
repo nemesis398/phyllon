@@ -50,7 +50,15 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: audit
+          egress-policy: block
+          # github.com and raw.githubusercontent.com serve scan-action's Grype
+          # download, ghcr.io and pkg-containers.githubusercontent.com the
+          # image, grype.anchore.io the vulnerability database, and
+          # api.github.com the SARIF upload.
+          allowed-endpoints: >
+            github.com:443 api.github.com:443 raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443 ghcr.io:443
+            pkg-containers.githubusercontent.com:443 grype.anchore.io:443
       - uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         id: scan
         with:
