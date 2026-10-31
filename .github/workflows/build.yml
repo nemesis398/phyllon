@@ -1,0 +1,311 @@
+# Builds, attests and signs everything a release ships. release.yml calls it
+# once a release-plz merge has tagged a new version. Because this is a reusable
+# workflow, the attestations and the cosign signature name build.yml as their
+# signer, not the release.yml that starts it (SLSA Build Level 3), and the
+# verify job in release.yml accepts nothing else
+# (docs/decisions/0006-release-pipeline.md).
+#
+# Jobs: binary builds the two static binaries and their SBOMs; image builds
+# the image once per architecture and pushes it by digest; manifest merges
+# the two into one image tagged with the version, attests and signs it, and
+# renders the release's compose.yaml with its digest. The minor-line tag, such
+# as 0.1, moves only in release.yml's publish job, after verify has passed,
+# because podman auto-update follows it.
+#
+# Every job starts with Harden-Runner in block mode, with the hosts its audit
+# run reached (0006 and the Task 20 audit run).
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag, such as v0.1.0
+        required: true
+        type: string
+      version:
+        description: The version without the v, such as 0.1.0
+        required: true
+        type: string
+    outputs:
+      binaries:
+        description: The binaries' file names, separated by spaces
+        value: ${{ jobs.binary.outputs.x86_64 }} ${{ jobs.binary.outputs.aarch64 }}
+      image-digest:
+        description: The digest of the multi-arch image, such as sha256:...
+        value: ${{ jobs.manifest.outputs.digest }}
+
+permissions: {}
+
+# With shell: bash, a run: step also fails when a command inside a pipe fails.
+defaults:
+  run:
+    shell: bash
+
+env:
+  BIN: phyllon
+  IMAGE: ghcr.io/nemesis398/phyllon
+
+jobs:
+  binary:
+    name: binary (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # actions/attest: the OIDC token for the signing certificate, and the
+      # attestation itself.
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: x86_64
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+    # Each leg sets only its own output, and an empty output is not written,
+    # so both names reach the workflow's outputs.
+    outputs:
+      x86_64: ${{ steps.package.outputs.x86_64 }}
+      aarch64: ${{ steps.package.outputs.aarch64 }}
+    env:
+      ARCH: ${{ matrix.arch }}
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ inputs.version }}
+      # Compiled into the binary (BuildInfo::current).
+      PHYLLON_GIT_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            release-assets.githubusercontent.com:443
+            static.rust-lang.org:443
+            index.crates.io:443
+            static.crates.io:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      # release-plz tags the commit that was pushed, so the tag and the commit
+      # compiled in are the same.
+      - run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      # rustup reads rust-toolchain.toml. No cache: a release builds from
+      # nothing.
+      - run: |
+          rustup toolchain install --no-self-update
+          rustup target add "$TARGET"
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          tool: cargo-auditable@0.7.7,cargo-cyclonedx@0.5.9
+          fallback: none
+      - run: cargo auditable build --release --locked --target "$TARGET"
+      - run: cargo cyclonedx --format json --spec-version 1.5 --target "$TARGET" --override-filename sbom
+      - name: Package and check
+        id: package
+        run: |
+          name="$BIN-$TARGET"
+          mkdir out
+          cp "target/$TARGET/release/$BIN" "out/$name"
+          cp sbom.json "out/$name.cdx.json"
+          file "out/$name"
+          # Without -q, grep reads to the end, so pipefail sees no SIGPIPE.
+          file "out/$name" | grep -F 'static' >/dev/null
+          # cargo auditable's crate list.
+          readelf --section-headers "out/$name" | grep -F '.dep-v0' >/dev/null
+          "out/$name" --version
+          test "$("out/$name" --version)" = "$BIN $VERSION ($GITHUB_SHA)"
+          echo "$ARCH=$name" >>"$GITHUB_OUTPUT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: out/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+
+  image:
+    name: image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # The push of the per-architecture image.
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: amd64
+            runner: ubuntu-24.04
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+    # As in binary: each leg sets only its own digest.
+    outputs:
+      amd64: ${{ steps.digest.outputs.amd64 }}
+      arm64: ${{ steps.digest.outputs.arm64 }}
+    env:
+      # No build summary and no build record artifact: neither ships.
+      DOCKER_BUILD_SUMMARY: "false"
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            results-receiver.actions.githubusercontent.com:443
+            ghcr.io:443
+            registry-1.docker.io:443
+            auth.docker.io:443
+            production.cloudfront.docker.com:443
+            gcr.io:443
+            dl-cdn.alpinelinux.org:443
+            index.crates.io:443
+            static.crates.io:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # Native runners, so no emulation. The image is pushed by digest only;
+      # manifest tags the merged image.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.platform }}
+          build-args: PHYLLON_GIT_COMMIT=${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - id: digest
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "$PLATFORM=$DIGEST" >>"$GITHUB_OUTPUT"
+
+  manifest:
+    name: manifest
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # The checkout of compose.yaml.
+      contents: read
+      # The merged manifest and the cosign signature go to GHCR.
+      packages: write
+      # actions/attest and cosign's keyless signature: the OIDC token for the
+      # certificate, and the attestations.
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.merge.outputs.digest }}
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # cosign-installer fetches cosign from GitHub's release assets and the
+      # release key from raw.githubusercontent.com. cosign reads its signing
+      # config from Sigstore's TUF repository and gets a signed timestamp.
+      # GHCR serves blobs from pkg-containers.
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: merge
+        name: Merge the two images
+        env:
+          AMD64: ${{ needs.image.outputs.amd64 }}
+          ARM64: ${{ needs.image.outputs.arm64 }}
+        run: |
+          for digest in "$AMD64" "$ARM64"; do
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          done
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" \
+            "$IMAGE@$AMD64" "$IMAGE@$ARM64"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
+            --format '{{json .Manifest}}' | jq -r .digest)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools inspect "$IMAGE@$digest"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.merge.outputs.digest }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - env:
+          DIGEST: ${{ steps.merge.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      # The release's compose.yaml is the repository's with Phyllon pinned to
+      # this image by digest, in place of the PHYLLON_IMAGE variable, which
+      # .env.example sets to the minor line.
+      - name: Render compose.yaml
+        env:
+          TAG: ${{ inputs.tag }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
+        run: |
+          mkdir out
+          pinned="    image: $IMAGE:$VERSION@$DIGEST"
+          # Replaces exactly one line, "image: ${PHYLLON_IMAGE:-<IMAGE>:<minor>}",
+          # and fails on none or more.
+          {
+            echo "# compose.yaml of Phyllon $TAG, with the image pinned by its digest."
+            awk -v prefix="    image: \${PHYLLON_IMAGE:-$IMAGE:" -v pinned="$pinned" '
+              index($0, prefix) == 1 && /^[^}]*}$/ { print pinned; n++; next }
+              { print }
+              END { exit (n != 1) }
+            ' compose.yaml
+          } >out/compose.yaml
+          grep -xF "$pinned" out/compose.yaml
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: out/compose.yaml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compose
+          path: out/compose.yaml
+          if-no-files-found: error
