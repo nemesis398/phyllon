@@ -1,6 +1,7 @@
-# Checks the dependency tree against the RustSec advisory database every night,
-# so a new advisory surfaces without a code change. A failed run notifies the
-# maintainer by mail.
+# Checks every night for advisories that arrive without a code change. The
+# advisories job checks the dependency tree against the RustSec database. The
+# scan-image job scans the published image, whose binary carries its crate list
+# (cargo auditable), with Grype. A failed run notifies the maintainer by mail.
 #
 # Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
@@ -34,3 +35,32 @@ jobs:
           tool: cargo-deny@0.20.2
           fallback: none
       - run: cargo deny check advisories
+
+  # Grype reads the crate list that cargo auditable embeds in the binary, so a
+  # crate advisory shows up here even when the lockfile has moved on. The tag
+  # is the minor line (0.1) and moves with the release line, in this file.
+  # Results go to code scanning; a high or critical finding fails the run.
+  scan-image:
+    name: scan-image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # uploads the SARIF report to code scanning
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        id: scan
+        with:
+          image: ghcr.io/nemesis398/phyllon:0.1
+          fail-build: true
+          severity-cutoff: high
+          output-format: sarif
+      # Also when the scan found something, which fails its step.
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+          category: grype-image
