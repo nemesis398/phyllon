@@ -18,6 +18,12 @@
 # --dry-run does everything up to the commit, prints the branch, the version
 # and the changelog entry, then puts the files back and leaves main as it was.
 #
+# A release that opens a new minor line, such as 0.2.0, also moves the line
+# the stack names (0.1 today) in compose.yaml, deploy/quadlet/phyllon.container,
+# scripts/quadlet-test.sh and the scan-image job of
+# .github/workflows/nightly.yml. Nothing else prompts it, and the nightly scan
+# keeps scanning the old line.
+#
 # One release branch at a time, cut from current main: branches stacked on
 # each other conflict in Cargo.toml, Cargo.lock and CHANGELOG.md once the
 # earlier ones are squash-merged (docs/decisions/0006-release-pipeline.md).
