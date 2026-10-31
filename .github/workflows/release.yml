@@ -188,7 +188,8 @@ jobs:
       # A draft is visible only to a token that can write.
       contents: write
       attestations: read
-      # The image and its signature on GHCR, while the package is private.
+      # The image and its signature on GHCR. The package is public; this
+      # keeps verify working should it be made private.
       packages: read
     # GH_TOKEN goes only to the steps that run gh.
     env:
