@@ -45,6 +45,9 @@ env:
   IMAGE: ghcr.io/nemesis398/phyllon
   SIGNER: nemesis398/phyllon/.github/workflows/build.yml
   CALLER: nemesis398/phyllon/.github/workflows/release.yml
+  # gh sends usage telemetry to cafe.github.com, which passes Harden-Runner
+  # as a GitHub meta domain; nothing of a release run should leave for it.
+  GH_TELEMETRY: "false"
 
 jobs:
   release-plz:
@@ -70,8 +73,6 @@ jobs:
             github.com:443
             api.github.com:443
             release-assets.githubusercontent.com:443
-            index.crates.io:443
-            static.crates.io:443
             static.rust-lang.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
