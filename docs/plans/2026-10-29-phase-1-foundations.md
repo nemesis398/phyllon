@@ -77,7 +77,9 @@ Read both before the first task.
 - Every job that has steps in `build.yml` and `release.yml` starts with
   `step-security/harden-runner`, pinned by SHA like every action, with
   `egress-policy: block` and an `allowed-endpoints` list of exactly the hosts
-  the job needs (Mika, 2026-10-30). The other workflows do not use it.
+  the job needs (Mika, 2026-10-30). The nightly `scan-image` job in
+  `nightly.yml` uses it too, in block mode with the hosts its audit run measured
+  (Mika, 2026-10-31). The other workflows do not use it.
 - Security headers, exact values:
   <!-- markdownlint-disable-next-line MD013 -->
   `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
@@ -1229,7 +1231,8 @@ Done: merged in 02c1af7 (#31) on 2026-10-31.
       request. Title:
       `ci: scan the published image and explain how to verify a release`.
 
-Done: released v0.1.0 in 8bd003f (#32) and merged in c8e768b (#33) on 2026-10-31.
+Done: released v0.1.0 in 8bd003f (#32) and merged in c8e768b (#33) on
+2026-10-31.
 
 ## Part 9: Acceptance
 
