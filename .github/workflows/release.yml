@@ -7,9 +7,9 @@
 # reusable workflow, builds, attests and signs. attach puts the files on the
 # draft; verify checks every file and the image against build.yml as the
 # signer; publish tags the image with the version and the minor line and
-# publishes the draft as a pre-release. The draft exists because an immutable release takes no new
-# assets once published, and a failed, skipped or canceled verify leaves the
-# release a draft (docs/decisions/0006-release-pipeline.md).
+# publishes the draft as a pre-release. The draft exists because an immutable
+# release takes no new assets once published, and a failed, skipped or canceled
+# verify leaves the release a draft (docs/decisions/0006-release-pipeline.md).
 #
 # Every job with steps starts with Harden-Runner in block mode, with the hosts
 # its audit run reached. GitHub's own domains pass whatever the list says
