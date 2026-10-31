@@ -39,7 +39,10 @@ jobs:
   # Grype reads the crate list that cargo auditable embeds in the binary, so a
   # crate advisory shows up here even when the lockfile has moved on. The tag
   # is the minor line (0.1) and moves with the release line, in this file.
-  # Results go to code scanning; a high or critical finding fails the run.
+  # Results go to code scanning; a high or critical finding fails the run. The
+  # log shows the cargo-auditable cataloger and its package count (159 for
+  # 0.1.0), not the names; a local CycloneDX scan of the same image listed 153
+  # of them as pkg:cargo components and 6 as Debian packages.
   scan-image:
     name: scan-image
     runs-on: ubuntu-24.04
