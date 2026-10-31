@@ -3,5 +3,6 @@
 pub mod cli;
 pub mod config;
 pub mod db;
+pub mod scratch;
 pub mod http;
 pub mod web;
