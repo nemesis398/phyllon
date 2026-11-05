@@ -19,10 +19,13 @@
 # and the changelog entry, then puts the files back and leaves main as it was.
 #
 # A release that opens a new minor line, such as 0.2.0, also moves the line
-# the stack names (0.1 today) in compose.yaml, deploy/quadlet/phyllon.container,
-# scripts/quadlet-test.sh and the scan-image job of
-# .github/workflows/nightly.yml. Nothing else prompts it, and the nightly scan
-# keeps scanning the old line.
+# the stack names (0.1 today) in compose.yaml, .env.example,
+# deploy/quadlet/phyllon.container, the scan-image job of
+# .github/workflows/nightly.yml, .github/workflows/podman.yml and
+# scripts/quadlet-test.sh. scripts/ci/check-image-pins.sh fails CI until all
+# six agree, but nothing prompts the move itself: without it, the nightly scan
+# keeps scanning the old line. docs/install.md names the line in prose; update
+# it by hand.
 #
 # One release branch at a time, cut from current main: branches stacked on
 # each other conflict in Cargo.toml, Cargo.lock and CHANGELOG.md once the

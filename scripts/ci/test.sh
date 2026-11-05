@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Tests for the two pull request checks CI runs, check-pr-title.sh and
 # check-signoff.sh, for the skill link check check-skill-links.sh, for the
-# module map check check-map.sh, for scripts/github-settings.sh and
-# scripts/posture.sh, and for the image checks and the cloud-init seed of
-# scripts/ci/fedora-vm.sh. The title tests call the
-# script with a title; the sign-off tests build a git repository in a
+# module map check check-map.sh, for the image pin check check-image-pins.sh,
+# for scripts/github-settings.sh and scripts/posture.sh, and for the image
+# checks and the cloud-init seed of scripts/ci/fedora-vm.sh. The title tests
+# call the script with a title; the sign-off tests build a git repository in a
 # temporary directory, make commits with explicit identities and run the
 # script inside it, with PR_AUTHOR and GITHUB_ACTIONS set as the test says.
 # The link tests build a tree of skills and links in a temporary directory and
 # check it, and the map tests do the same with a src/ and a docs/map.md. The
-# settings tests put a stub gh first on PATH that answers from fixture JSON, so
-# they never reach GitHub, and the posture tests do the same
-# with a stub container engine. The tests of scripts/ci/fedora-vm.sh's trust
-# chain and seed run it with stub gpgv, curl, cloud-localds and QEMU, so they
-# need neither the network nor KVM. Run it with:
+# pin tests copy the files the pin check reads from this checkout and change
+# one copy each. The settings tests put a stub gh first on PATH that answers
+# from fixture JSON, so they never reach GitHub, and the posture tests do the
+# same with a stub container engine. The tests of scripts/ci/fedora-vm.sh's
+# trust chain and seed run it with stub gpgv, curl, cloud-localds and QEMU, so
+# they need neither the network nor KVM. Run it with:
 #
 #   scripts/ci/test.sh
 #
@@ -29,6 +30,8 @@ signoff_check="$ci_dir/check-signoff.sh"
 settings_script="$ci_dir/../github-settings.sh"
 links_check="$ci_dir/check-skill-links.sh"
 map_check="$ci_dir/check-map.sh"
+pins_check="$ci_dir/check-image-pins.sh"
+repo_root="$(cd "$ci_dir/../.." && pwd)"
 
 # Keep the user's git configuration (signing, hooks, templates) out of the
 # temporary repositories.
@@ -1137,6 +1140,243 @@ two_map_roots_are_a_usage_error() {
 	expect_out "usage: check-map.sh [ROOT]"
 }
 
+# Image pins. Each test copies the files check-image-pins.sh reads from this
+# checkout into a tree of its own, changes one copy and runs the check on the
+# tree. The edits match by shape, not by value, so a bump of the real pins
+# does not break them.
+
+# The files check-image-pins.sh reads, relative to the root.
+pin_files=(
+	compose.yaml
+	.env.example
+	deploy/quadlet/phyllon.container
+	deploy/quadlet/phyllon-proxy.container
+	deploy/quadlet/phyllon-db.container
+	.github/workflows/ci.yml
+	.github/workflows/nightly.yml
+	.github/workflows/podman.yml
+	scripts/quadlet-test.sh
+)
+# The files that name the Phyllon minor line.
+minor_line_files=(
+	compose.yaml
+	.env.example
+	deploy/quadlet/phyllon.container
+	.github/workflows/nightly.yml
+	.github/workflows/podman.yml
+	scripts/quadlet-test.sh
+)
+other_digest="sha256:$(printf '%064d' 0)"
+
+new_pins_tree() {
+	tree="$(mktemp -d -p "$scratch")"
+	local path
+	for path in "${pin_files[@]}"; do
+		mkdir -p "$tree/$(dirname "$path")"
+		cp -- "$repo_root/$path" "$tree/$path"
+	done
+}
+
+# Rewrites $tree/$1 with the extended sed expression $2.
+edit_pin() {
+	sed -E "$2" "$tree/$1" >"$tree/$1.tmp"
+	mv -- "$tree/$1.tmp" "$tree/$1"
+}
+
+run_pins() {
+	status=0
+	out="$("$pins_check" "$tree" 2>&1)" || status=$?
+}
+
+the_repository_pins_agree() {
+	new_pins_tree
+	run_pins
+	expect_status 0
+	expect_out "check-image-pins.sh: Caddy, pgvector and the Phyllon minor line agree"
+}
+
+# Dependabot bumps compose.yaml and not the Quadlet unit.
+a_caddy_digest_bumped_only_in_compose_fails_and_names_the_unit() {
+	new_pins_tree
+	edit_pin compose.yaml "s/(caddy:[^@]*@)sha256:[0-9a-f]{64}/\1$other_digest/"
+	run_pins
+	expect_status 1
+	expect_out "deploy/quadlet/phyllon-proxy.container:"
+	expect_out "$other_digest"
+}
+
+a_caddy_tag_that_differs_fails() {
+	new_pins_tree
+	edit_pin deploy/quadlet/phyllon-proxy.container 's/(caddy:)[^@]*@/\19.9.9@/'
+	run_pins
+	expect_status 1
+	expect_out "deploy/quadlet/phyllon-proxy.container:"
+	expect_out "caddy:9.9.9@"
+}
+
+a_pgvector_digest_bumped_only_in_compose_fails_and_names_the_unit_and_ci() {
+	new_pins_tree
+	edit_pin compose.yaml "s/(pgvector:[^@]*@)sha256:[0-9a-f]{64}/\1$other_digest/"
+	run_pins
+	expect_status 1
+	expect_out "deploy/quadlet/phyllon-db.container:"
+	expect_out ".github/workflows/ci.yml:"
+}
+
+# ci.yml pins the digest without the tag and names the tag in a comment.
+a_stale_pgvector_digest_in_ci_fails() {
+	new_pins_tree
+	edit_pin .github/workflows/ci.yml "/postgres: 18/,/image:/s/@sha256:[0-9a-f]{64}/@$other_digest/"
+	run_pins
+	expect_status 1
+	expect_out ".github/workflows/ci.yml:"
+	expect_out "$other_digest"
+	expect_no_out "phyllon-db.container"
+}
+
+a_stale_pgvector_tag_comment_in_ci_fails() {
+	new_pins_tree
+	edit_pin .github/workflows/ci.yml '/postgres: 18/,/image:/s/# [^ ]+-pg18$/# 0.0.1-pg18/'
+	run_pins
+	expect_status 1
+	expect_out ".github/workflows/ci.yml:"
+	expect_out "0.0.1-pg18"
+}
+
+# compose.yaml runs PostgreSQL 18; the 17 entry has no copy to agree with.
+the_other_postgres_version_in_ci_is_not_compared() {
+	new_pins_tree
+	edit_pin .github/workflows/ci.yml "/postgres: 17/,/image:/s/@sha256:[0-9a-f]{64}/@$other_digest/"
+	run_pins
+	expect_status 0
+}
+
+a_major_version_without_a_ci_entry_fails() {
+	new_pins_tree
+	edit_pin compose.yaml 's/(pgvector:[^@]*-pg)18@/\119@/'
+	edit_pin deploy/quadlet/phyllon-db.container 's/(pgvector:[^@]*-pg)18@/\119@/'
+	run_pins
+	expect_status 1
+	expect_out "no pgvector entry for postgres: 19"
+}
+
+an_image_without_a_digest_fails() {
+	new_pins_tree
+	edit_pin compose.yaml 's/(caddy:[^@]*)@sha256:[0-9a-f]{64}/\1/'
+	edit_pin deploy/quadlet/phyllon-proxy.container 's/(caddy:[^@]*)@sha256:[0-9a-f]{64}/\1/'
+	run_pins
+	expect_status 1
+	expect_out "compose.yaml:"
+	expect_out "not pinned by tag and digest"
+}
+
+# Each copy of the minor line on its own.
+a_minor_line_that_differs_in_one_file_fails_and_names_it() {
+	local path missed=()
+	for path in "${minor_line_files[@]}"; do
+		new_pins_tree
+		edit_pin "$path" 's#(ghcr\.io/nemesis398/phyllon:)0\.[0-9]+#\19.8#'
+		run_pins
+		if [[ "$status" != 1 || "$out" != *"$path:"*"9.8"* ]]; then
+			missed+=("$path")
+		fi
+	done
+	((${#missed[@]} == 0)) || {
+		echo "  a changed line in these did not fail the check: ${missed[*]}"
+		return 1
+	}
+}
+
+# A version is not a line: .env.example must not pin a patch release.
+a_version_in_place_of_the_minor_line_fails() {
+	new_pins_tree
+	edit_pin .env.example 's#(ghcr\.io/nemesis398/phyllon:)(0\.[0-9]+)#\1\2.0#'
+	run_pins
+	expect_status 1
+	expect_out ".env.example:"
+	expect_out "not a minor line"
+}
+
+# A line the check no longer finds, because it moved or changed its form, must
+# not pass for agreement.
+a_missing_reference_fails_and_names_the_file() {
+	local path missed=()
+	for path in "${minor_line_files[@]}" deploy/quadlet/phyllon-proxy.container \
+		deploy/quadlet/phyllon-db.container; do
+		new_pins_tree
+		edit_pin "$path" '/(ghcr\.io\/nemesis398\/phyllon:|caddy:|pgvector:)/d'
+		run_pins
+		if [[ "$status" != 1 || "$out" != *"$path: no "* ]]; then
+			missed+=("$path")
+		fi
+	done
+	((${#missed[@]} == 0)) || {
+		echo "  a missing line in these did not fail the check: ${missed[*]}"
+		return 1
+	}
+}
+
+a_second_reference_in_one_file_fails() {
+	new_pins_tree
+	printf 'Image=ghcr.io/nemesis398/phyllon:0.1\n' >>"$tree/deploy/quadlet/phyllon.container"
+	run_pins
+	expect_status 1
+	expect_out "deploy/quadlet/phyllon.container:"
+	expect_out "more than one"
+}
+
+# A copy in a comment is no reference.
+a_reference_in_a_comment_is_ignored() {
+	new_pins_tree
+	printf '# Image=ghcr.io/nemesis398/phyllon:9.8\n' >>"$tree/deploy/quadlet/phyllon.container"
+	run_pins
+	expect_status 0
+}
+
+a_missing_file_fails_and_names_it() {
+	new_pins_tree
+	rm -- "$tree/scripts/quadlet-test.sh"
+	run_pins
+	expect_status 1
+	expect_out "scripts/quadlet-test.sh: missing"
+}
+
+the_pins_check_without_an_argument_checks_its_own_tree() {
+	new_pins_tree
+	mkdir -p "$tree/scripts/ci"
+	cp -- "$pins_check" "$tree/scripts/ci/"
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-image-pins.sh" 2>&1)" || status=$?
+	expect_status 0
+	edit_pin .env.example 's#(ghcr\.io/nemesis398/phyllon:)0\.[0-9]+#\19.8#'
+	status=0
+	out="$(cd / && "$tree/scripts/ci/check-image-pins.sh" 2>&1)" || status=$?
+	expect_status 1
+	expect_out ".env.example:"
+}
+
+a_pins_root_that_is_not_a_directory_is_a_usage_error() {
+	tree="$scratch/nowhere"
+	run_pins
+	expect_status 2
+	expect_out "is not a directory"
+}
+
+an_empty_pins_root_is_a_usage_error() {
+	tree=""
+	run_pins
+	expect_status 2
+	expect_out "ROOT is empty"
+}
+
+two_pins_roots_are_a_usage_error() {
+	new_pins_tree
+	status=0
+	out="$("$pins_check" "$tree" "$tree" 2>&1)" || status=$?
+	expect_status 2
+	expect_out "usage: check-image-pins.sh [ROOT]"
+}
+
 # Repository settings. The stub gh answers `gh api [-X METHOD] [-H HEADER]...
 # repos/nemesis398/phyllon/PATH` from $fixtures/NAME.json, where NAME is PATH
 # with / turned into _ ("repo" for the repository itself). A missing file
@@ -2221,6 +2461,25 @@ tests=(
 	a_map_root_that_is_not_a_directory_is_a_usage_error
 	an_empty_map_root_is_a_usage_error
 	two_map_roots_are_a_usage_error
+	the_repository_pins_agree
+	a_caddy_digest_bumped_only_in_compose_fails_and_names_the_unit
+	a_caddy_tag_that_differs_fails
+	a_pgvector_digest_bumped_only_in_compose_fails_and_names_the_unit_and_ci
+	a_stale_pgvector_digest_in_ci_fails
+	a_stale_pgvector_tag_comment_in_ci_fails
+	the_other_postgres_version_in_ci_is_not_compared
+	a_major_version_without_a_ci_entry_fails
+	an_image_without_a_digest_fails
+	a_minor_line_that_differs_in_one_file_fails_and_names_it
+	a_version_in_place_of_the_minor_line_fails
+	a_missing_reference_fails_and_names_the_file
+	a_second_reference_in_one_file_fails
+	a_reference_in_a_comment_is_ignored
+	a_missing_file_fails_and_names_it
+	the_pins_check_without_an_argument_checks_its_own_tree
+	a_pins_root_that_is_not_a_directory_is_a_usage_error
+	an_empty_pins_root_is_a_usage_error
+	two_pins_roots_are_a_usage_error
 	a_map_root_starting_with_a_dash_is_a_path
 	a_map_root_is_not_resolved_through_cdpath
 	a_dangling_symlink_in_src_fails_and_names_it
