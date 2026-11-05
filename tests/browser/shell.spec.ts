@@ -1,3 +1,5 @@
+// Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 

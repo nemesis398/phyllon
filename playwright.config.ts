@@ -1,3 +1,5 @@
+// Changing this file needs the maintainer's explicit approval (AGENTS.md).
+
 import { defineConfig } from "@playwright/test";
 
 // The browser checks run against a `phyllon serve` that is already up. CI

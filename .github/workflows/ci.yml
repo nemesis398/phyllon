@@ -123,7 +123,7 @@ jobs:
   # every scope: runtime, development and unknown. It fails when an added
   # version has a known advisory of any severity, or when an added or changed
   # dependency has a license outside deny.toml's allowlist. Dependencies the
-  # pull request does not touch are not reviewed; cargo deny covers the whole
+  # pull request does not touch are not reviewed; cargo deny covers the crate
   # tree. Public repositories have the dependency graph.
   dependency-review:
     name: dependency-review
@@ -158,8 +158,8 @@ jobs:
 
   # The compose stack under Docker, with the image built from this commit:
   # stack-test.sh starts it from .env.example, checks TLS, the database roles
-  # and SCRAM, and ends with the posture script. The plan's Task 13 adds the
-  # same run under rootless Podman with SELinux.
+  # and SCRAM, and ends with the posture script. podman.yml runs the same under
+  # rootless Podman with SELinux.
   stack-docker:
     name: stack-docker
     runs-on: ubuntu-latest

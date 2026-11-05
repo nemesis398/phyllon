@@ -2,6 +2,8 @@
 # like the rule for new dependencies in AGENTS.md, and its commit prefix makes
 # the pull request title a conventional commit that CI's pr-title job accepts:
 # "build(deps): bump axum from 0.8.4 to 0.8.5".
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
 version: 2
 updates:

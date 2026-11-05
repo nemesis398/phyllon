@@ -9,6 +9,8 @@
 #
 # prints PASS or FAIL per check and adds each failure to failed. PROJECT is
 # the compose project label scripts/posture.sh selects the containers by.
+#
+# Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
 failed=0
 pass() { echo "PASS $1"; }

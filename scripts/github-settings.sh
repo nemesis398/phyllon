@@ -46,10 +46,12 @@ expected="$(jq -n '{
 		"typst", "worksheet-generator", "worksheets"]},
 	# The four switches: PUT turns one on and DELETE off. GET answers
 	# {"enabled": ...}, except that GET /vulnerability-alerts (Dependabot
-	# alerts) answers 204 when on, and each of the last three answers 404 when
-	# off. Alerts come before security updates, which need them. Dependabot
-	# pauses security updates when its pull requests go ignored; PUT takes no
-	# body, so apply cannot clear a pause, but audit shows it.
+	# alerts) answers 204 when on and 404 when off, GET /immutable-releases
+	# answers 404 when off, and GET /automated-security-fixes answers 404 only
+	# while the alerts are off. Alerts come before security updates, which need
+	# them. Dependabot pauses security updates when its pull requests go
+	# ignored; PUT takes no body, so apply cannot clear a pause, but audit shows
+	# it.
 	"private-vulnerability-reporting": {enabled: true},
 	"vulnerability-alerts": {enabled: true},
 	"automated-security-fixes": {enabled: true, paused: false},

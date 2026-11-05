@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Runs the gate, scripts/check.sh, when a commit touches Rust code or the
-# gate's configuration, so a docs-only commit does not wait for it. The staged
-# paths decide whether the gate runs, but the gate checks the working tree,
-# not the index: an unstaged fix or an untracked file the commit needs can
-# make it pass. CI checks exactly what was committed. Turn it on once per
-# clone with:
+# Runs the gate, scripts/check.sh, when a commit touches Rust code, another
+# compile input (the Askama templates and the asset and brand files that
+# include_bytes! reads) or the configuration of Cargo, its tools and the gate,
+# so a docs-only commit does not wait for it. The staged paths decide whether
+# the gate runs, but the gate checks the working tree, not the index: an
+# unstaged fix or an untracked file the commit needs can make it pass. CI
+# checks exactly what was committed. Turn it on once per clone with:
 #
 #   git config core.hooksPath .githooks
 #
@@ -19,6 +20,8 @@ cd "$top"
 
 # Let git match the staged paths, so names with spaces or other odd characters
 # need no parsing here. In glob magic, "**/" also matches the top level.
+# .cargo/config and rust-toolchain are the legacy names Cargo and rustup still
+# read. scripts/hooks/stop-gate.sh holds the same list; keep the two in step.
 gate_paths=(
 	':(glob)**/*.rs'
 	':(glob)**/Cargo.toml'
@@ -26,8 +29,14 @@ gate_paths=(
 	':(glob)**/clippy.toml'
 	':(glob)**/deny.toml'
 	':(glob)**/rust-toolchain.toml'
+	':(glob)**/rust-toolchain'
 	':(glob)**/*rustfmt.toml'
 	':(glob)**/.cargo/config.toml'
+	':(glob)**/.cargo/config'
+	':(glob).config/nextest.toml'
+	':(glob)templates/**'
+	':(glob)assets/**'
+	':(glob)brand/**'
 	':(glob)scripts/check.sh'
 	':(glob).githooks/**'
 )
@@ -41,7 +50,7 @@ staged="$(
 )"
 
 if [[ -z "$staged" ]]; then
-	echo "pre-commit: no Rust or gate configuration files staged, skipping scripts/check.sh"
+	echo "pre-commit: no Rust, compile input or gate configuration files staged, skipping scripts/check.sh"
 	exit 0
 fi
 

@@ -11,5 +11,7 @@ ignores:
   - ".superpowers/**"
   - "node_modules/**"
   - "target/**"
+  # Playwright writes error-context.md here when a browser test fails.
+  - "test-results/**"
   - "CODE_OF_CONDUCT.md"
   - "CLAUDE.md"
