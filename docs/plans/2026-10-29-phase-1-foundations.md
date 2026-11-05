@@ -1267,7 +1267,8 @@ Done: released v0.1.0 in 8bd003f (#32) and merged in c8e768b (#33) on
       `curl -sI https://phyllon.de` redirects to the repository. GitHub's
       workflow lockfiles have their month of use on 2026-11-28: if phase 1
       closes earlier, add a Plane item to look at them then.
-- [ ] **Step 9: Close M1.** Mark PHY-9 to PHY-18 done with their evidence, close
+- [x] **Step 9: Close M1.** Mark PHY-9 to PHY-18 done with their evidence, close
       M1 on Plane and the milestone `M1 Foundations` on GitHub, update the
       project paper's milestone line through `/project update`, and set M2's
-      date.
+      date. Mika decided on 2026-11-05 that M2 gets its date once its design is
+      written, not when M1 closes.
