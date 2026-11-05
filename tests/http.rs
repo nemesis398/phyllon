@@ -112,6 +112,7 @@ async fn head_healthz_answers_200() {
     let response = send(&app, Method::HEAD, "/healthz").await;
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_security_headers(&response, "HEAD /healthz");
     assert_eq!(text(response).await, "");
 }
 
@@ -190,9 +191,11 @@ async fn the_pool_takes_its_connection_options_from_the_config_alone() {
 async fn every_response_carries_the_security_headers() {
     let app = router(unreachable_state("headers"));
 
-    for path in ["/healthz", "/readyz", "/no-such-page"] {
-        let response = send(&app, Method::GET, path).await;
-        assert_security_headers(&response, path);
+    for method in [Method::GET, Method::HEAD] {
+        for path in ["/healthz", "/readyz", "/no-such-page"] {
+            let response = send(&app, method.clone(), path).await;
+            assert_security_headers(&response, &format!("{method} {path}"));
+        }
     }
 }
 

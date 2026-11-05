@@ -545,9 +545,41 @@ fn strips_exactly_one_line_ending_and_nothing_else() {
     assert_eq!(password_from("pw-lone-cr", b"s3cret\r"), "s3cret\r");
     assert_eq!(password_from("pw-spaces", b"  s3 cret  \n"), "  s3 cret  ");
     assert_eq!(password_from("pw-inner", b"s3\ncret\n"), "s3\ncret");
-    assert_eq!(password_from("pw-only-lf", b"\n"), "");
-    assert_eq!(password_from("pw-only-crlf", b"\r\n"), "");
-    assert_eq!(password_from("pw-empty", b""), "");
+    assert_eq!(password_from("pw-only-space", b" \n"), " ");
+}
+
+#[test]
+fn an_empty_password_is_refused_with_the_key_and_path() {
+    // PostgreSQL accepts no empty password, so an empty file would let `serve`
+    // start and leave `/readyz` at 503. The same holds for a file that is empty
+    // once its one line ending is stripped.
+    for (name, content) in [
+        ("pw-empty", &b""[..]),
+        ("pw-only-lf", b"\n"),
+        ("pw-only-crlf", b"\r\n"),
+    ] {
+        let dir = test_dir(name);
+        let file = dir.join("password");
+        fs::write(&file, content).unwrap();
+        let config = load_with_password_file(&dir, &file);
+
+        let error = config.database.password().unwrap_err();
+        let text = error.to_string();
+
+        assert!(
+            matches!(&error, ConfigError::EmptySecret { key, path }
+                if *key == "database.password_file" && *path == file),
+            "{name}: got {error:?}"
+        );
+        assert!(
+            text.contains("database.password_file"),
+            "{name}: message was: {text}"
+        );
+        assert!(
+            text.contains(file.to_str().unwrap()),
+            "{name}: message was: {text}"
+        );
+    }
 }
 
 #[test]

@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// The TOML key whose file a [`ConfigError::Secret`] reports.
+/// The TOML key whose file a [`ConfigError::Secret`] or
+/// [`ConfigError::EmptySecret`] reports.
 const PASSWORD_FILE_KEY: &str = "database.password_file";
 
 /// Why the configuration could not be loaded.
@@ -54,6 +55,17 @@ pub enum ConfigError {
         /// The operating system's reason, which never contains the file's
         /// content.
         source: std::io::Error,
+    },
+    /// A secret file named by the config is empty, or holds nothing but the
+    /// one line ending that is stripped. PostgreSQL accepts no empty password,
+    /// so the server would start and never be ready.
+    #[error("the secret file for {key} at {} is empty", .path.display())]
+    EmptySecret {
+        /// The config key that names the file, for example
+        /// `database.password_file`.
+        key: &'static str,
+        /// The path of the secret file.
+        path: PathBuf,
     },
 }
 
@@ -461,7 +473,9 @@ impl DatabaseConfig {
     /// # Errors
     ///
     /// Returns [`ConfigError::Secret`] when the file cannot be read or is not
-    /// UTF-8. The error names the key and the path, never the content.
+    /// UTF-8, and [`ConfigError::EmptySecret`] when nothing is left after the
+    /// line ending is stripped. Both name the key and the path, never the
+    /// content.
     pub fn password(&self) -> Result<Secret, ConfigError> {
         let mut text =
             fs::read_to_string(&self.password_file).map_err(|source| ConfigError::Secret {
@@ -474,6 +488,12 @@ impl DatabaseConfig {
             .or_else(|| text.strip_suffix('\n'))
             .map_or(text.len(), str::len);
         text.truncate(kept);
+        if text.is_empty() {
+            return Err(ConfigError::EmptySecret {
+                key: PASSWORD_FILE_KEY,
+                path: self.password_file.clone(),
+            });
+        }
         Ok(Secret(text))
     }
 }
