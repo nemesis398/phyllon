@@ -15,6 +15,16 @@
 # its audit run reached. GitHub's own domains pass whatever the list says
 # (0006).
 #
+# On westus2 runners Harden-Runner can drop the addresses of allowed hosts,
+# and its Post step can hang until the job times out
+# (step-security/harden-runner#708). v2.22.3 fixes this unless its agent's
+# feature-flag request times out. When a build job cannot reach an allowed
+# host or hangs, force-cancel the run with `gh run cancel --force <run-id>`,
+# then run `gh run rerun --failed <run-id>`. That reruns only the failed jobs
+# and the jobs after them, so the tag and the draft from release-plz stay.
+# Rerun again if a job lands on westus2 again: v0.1.0 (run 41194330528) needed
+# three attempts.
+#
 # Changing this file needs the maintainer's explicit approval (AGENTS.md).
 
 name: Release
