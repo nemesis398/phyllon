@@ -159,9 +159,10 @@ everything else.
   cannot bind a port below 1024 unless the host allows it, so the `localhost`
   quickstart uses 8080 and 8443 and needs no root. A public installation under
   rootless Podman sets `net.ipv4.ip_unprivileged_port_start=80` once, and the
-  install guide says so plainly. It is the one root step in any install path,
-  and it comes from rootless containers, not from Phyllon: every web service
-  under rootless Podman needs the same.
+  install guide says so plainly. It is the only root step Phyllon itself needs;
+  installing packages and opening the firewall are host prerequisites (Mika,
+  2026-10-31). It comes from rootless containers, not from Phyllon: every web
+  service under rootless Podman needs the same.
 - `compose.podman.yaml` holds Podman-only options if testing shows any are
   needed. The aim is to need none.
 
