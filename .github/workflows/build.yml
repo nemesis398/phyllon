@@ -83,7 +83,7 @@ jobs:
       # Compiled into the binary (BuildInfo::current).
       PHYLLON_GIT_COMMIT: ${{ github.sha }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           # Nothing here needs sudo or a container.
           disable-sudo-and-containers: true
@@ -162,7 +162,7 @@ jobs:
       DOCKER_BUILD_SUMMARY: "false"
       DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -230,7 +230,7 @@ jobs:
       # release key from raw.githubusercontent.com. cosign reads its signing
       # config from Sigstore's TUF repository and gets a signed timestamp.
       # GHCR serves blobs from pkg-containers.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
