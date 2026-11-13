@@ -74,7 +74,7 @@ jobs:
       tag: ${{ steps.out.outputs.tag }}
       version: ${{ steps.out.outputs.version }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           # Nothing here needs sudo or a container.
           disable-sudo-and-containers: true
@@ -166,7 +166,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           disable-sudo-and-containers: true
           egress-policy: block
@@ -210,7 +210,7 @@ jobs:
     steps:
       # As in build.yml's manifest job for cosign; gh attestation verify reads
       # the bundles from tmaproduction and its trusted roots through TUF.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -304,7 +304,7 @@ jobs:
       VERSION: ${{ needs.release-plz.outputs.version }}
       DIGEST: ${{ needs.build.outputs.image-digest }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
