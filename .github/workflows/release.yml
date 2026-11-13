@@ -104,7 +104,7 @@ jobs:
       # release-plz from install-action's manifest, which checks the release
       # asset's SHA-256, not through cargo-binstall as release-plz/action does.
       - if: steps.gate.outputs.version != ''
-        uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: release-plz@0.4.0
           fallback: none
