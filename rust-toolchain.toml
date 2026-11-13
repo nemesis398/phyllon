@@ -3,6 +3,6 @@
 # moves only in its own pull request. The Docker builder image uses the same
 # version.
 [toolchain]
-channel = "1.99.1"
+channel = "1.100.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"
