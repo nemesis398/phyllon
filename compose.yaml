@@ -17,7 +17,7 @@ services:
     # The default .env turns this profile on. A host with its own proxy
     # removes proxy from COMPOSE_PROFILES.
     profiles: [proxy]
-    image: docker.io/library/caddy:2.11.7@sha256:5e5286cb37d44086d651a5363f05f43a692ce4d649d88fb1bd844579f45fa9e8
+    image: docker.io/library/caddy:2.11.9@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
     # The image runs as root. Any uid works, because its data and config
     # directories are mode 1777; this one is Caddy's own, so it shares no
     # files with phyllon (65532).
